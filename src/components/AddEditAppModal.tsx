@@ -5,16 +5,16 @@ import {
   Sparkles, 
   Image, 
   Layers, 
-  ExternalLink, 
-  Maximize2, 
   ShieldAlert,
   Palette
 } from 'lucide-react';
-import { WebAppItem, OpenMode } from '../types';
+import { WebAppItem, Language } from '../types';
+import { translations } from '../i18n/translations';
 import { triggerHaptic } from '../services/telegram';
 
 interface AddEditAppModalProps {
   isOpen: boolean;
+  language: Language;
   onClose: () => void;
   onSave: (app: WebAppItem) => void;
   editingApp?: WebAppItem | null;
@@ -31,14 +31,12 @@ const CATEGORIES: WebAppItem['category'][] = [
 ];
 
 const QUICK_PRESETS = [
-  { name: 'YouTube', url: 'https://youtube.com', category: 'Media', color: '#FF0000', openMode: 'external' as OpenMode },
-  { name: 'X / Twitter', url: 'https://x.com', category: 'Social', color: '#000000', openMode: 'external' as OpenMode },
-  { name: 'Reddit', url: 'https://reddit.com', category: 'Social', color: '#FF4500', openMode: 'external' as OpenMode },
-  { name: 'TikTok', url: 'https://tiktok.com', category: 'Social', color: '#000000', openMode: 'external' as OpenMode },
-  { name: 'ChatGPT', url: 'https://chatgpt.com', category: 'Productivity', color: '#10A37F', openMode: 'external' as OpenMode },
-  { name: 'Notion', url: 'https://notion.so', category: 'Productivity', color: '#000000', openMode: 'external' as OpenMode },
-  { name: 'Spotify Web', url: 'https://open.spotify.com', category: 'Media', color: '#1DB954', openMode: 'external' as OpenMode },
-  { name: 'DuckDuckGo', url: 'https://duckduckgo.com', category: 'Utilities', color: '#DE5833', openMode: 'iframe' as OpenMode },
+  { name: 'YouTube', url: 'https://youtube.com', category: 'Media' as const, color: '#FF0000' },
+  { name: 'X / Twitter', url: 'https://x.com', category: 'Social' as const, color: '#000000' },
+  { name: 'Reddit', url: 'https://reddit.com', category: 'Social' as const, color: '#FF4500' },
+  { name: 'Notion', url: 'https://notion.so', category: 'Productivity' as const, color: '#000000' },
+  { name: 'Spotify', url: 'https://open.spotify.com', category: 'Media' as const, color: '#1DB954' },
+  { name: 'DuckDuckGo', url: 'https://duckduckgo.com', category: 'Utilities' as const, color: '#DE5833' },
 ];
 
 const PRESET_COLORS = [
@@ -48,6 +46,7 @@ const PRESET_COLORS = [
 
 export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
   isOpen,
+  language,
   onClose,
   onSave,
   editingApp
@@ -56,10 +55,10 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
   const [url, setUrl] = useState('');
   const [iconUrl, setIconUrl] = useState('');
   const [category, setCategory] = useState<WebAppItem['category']>('Utilities');
-  const [openMode, setOpenMode] = useState<OpenMode>('iframe');
   const [description, setDescription] = useState('');
   const [accentColor, setAccentColor] = useState('#3b82f6');
   const [error, setError] = useState('');
+  const t = translations[language];
 
   useEffect(() => {
     if (editingApp) {
@@ -67,7 +66,6 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
       setUrl(editingApp.url);
       setIconUrl(editingApp.iconUrl || '');
       setCategory(editingApp.category);
-      setOpenMode(editingApp.openMode);
       setDescription(editingApp.description || '');
       setAccentColor(editingApp.accentColor || '#3b82f6');
     } else {
@@ -75,14 +73,12 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
       setUrl('');
       setIconUrl('');
       setCategory('Utilities');
-      setOpenMode('iframe');
       setDescription('');
       setAccentColor('#3b82f6');
     }
     setError('');
   }, [editingApp, isOpen]);
 
-  // Auto-detect favicon when URL is typed
   const handleUrlBlur = () => {
     if (!url) return;
     let cleanUrl = url.trim();
@@ -97,38 +93,20 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
         setIconUrl(`https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=128`);
       }
       if (!name) {
-        // Infer readable name from domain
         const hostParts = parsed.hostname.replace(/^www\./, '').split('.');
         if (hostParts.length > 0) {
           const capitalized = hostParts[0].charAt(0).toUpperCase() + hostParts[0].slice(1);
           setName(capitalized);
         }
       }
-
-      // Check for known iframe-blocking platforms
-      const host = parsed.hostname.toLowerCase();
-      if (
-        host.includes('facebook') || 
-        host.includes('instagram') || 
-        host.includes('linkedin') || 
-        host.includes('twitter') || 
-        host.includes('x.com') ||
-        host.includes('youtube') ||
-        host.includes('google')
-      ) {
-        setOpenMode('external');
-      }
-    } catch {
-      // Invalid URL handled on submit
-    }
+    } catch {}
   };
 
   const handleApplyPreset = (preset: typeof QUICK_PRESETS[0]) => {
     triggerHaptic('selection');
     setName(preset.name);
     setUrl(preset.url);
-    setCategory(preset.category as WebAppItem['category']);
-    setOpenMode(preset.openMode);
+    setCategory(preset.category);
     setAccentColor(preset.color);
     try {
       const parsed = new URL(preset.url);
@@ -141,13 +119,13 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
     triggerHaptic('medium');
 
     if (!name.trim()) {
-      setError('App name is required');
+      setError(t.modal.errors.nameRequired);
       return;
     }
 
     let finalUrl = url.trim();
     if (!finalUrl) {
-      setError('URL is required');
+      setError(t.modal.errors.urlRequired);
       return;
     }
 
@@ -158,17 +136,9 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
     try {
       new URL(finalUrl);
     } catch {
-      setError('Please enter a valid website URL (e.g., https://example.com)');
+      setError(t.modal.errors.invalidUrl);
       return;
     }
-
-    const host = new URL(finalUrl).hostname.toLowerCase();
-    const isKnownBlocked = 
-      host.includes('facebook') || 
-      host.includes('instagram') || 
-      host.includes('linkedin') || 
-      host.includes('twitter') || 
-      host.includes('x.com');
 
     const appItem: WebAppItem = {
       id: editingApp ? editingApp.id : `app_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -176,12 +146,10 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
       url: finalUrl,
       iconUrl: iconUrl.trim() || undefined,
       category,
-      openMode,
       description: description.trim() || undefined,
       accentColor,
       isDefault: editingApp?.isDefault ?? false,
-      createdAt: editingApp?.createdAt ?? Date.now(),
-      knownBlockedIframe: isKnownBlocked
+      createdAt: editingApp?.createdAt ?? Date.now()
     };
 
     onSave(appItem);
@@ -191,7 +159,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
       <div 
         className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-[var(--tg-theme-bg-color,#17212b)] border border-[var(--tg-theme-secondary-bg-color,#232e3c)] shadow-2xl p-5 text-[var(--tg-theme-text-color,#ffffff)]"
         onClick={(e) => e.stopPropagation()}
@@ -204,10 +172,10 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-[var(--tg-theme-text-color,#ffffff)]">
-                {editingApp ? 'Edit Web App' : 'Add Web App'}
+                {editingApp ? t.modal.editTitle : t.modal.addTitle}
               </h2>
               <p className="text-xs text-[var(--tg-theme-hint-color,#708499)]">
-                Add any link to your personal launcher dashboard
+                {t.modal.subtitle}
               </p>
             </div>
           </div>
@@ -226,7 +194,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
         {!editingApp && (
           <div className="mb-4">
             <span className="text-[11px] font-semibold text-[var(--tg-theme-hint-color,#708499)] uppercase tracking-wider block mb-2">
-              Quick Suggestions
+              {t.modal.quickSuggestions}
             </span>
             <div className="flex flex-wrap gap-1.5">
               {QUICK_PRESETS.map((p) => (
@@ -253,10 +221,10 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
             </div>
           )}
 
-          {/* App URL */}
+          {/* Web URL */}
           <div>
             <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              Website URL *
+              {t.modal.urlLabel}
             </label>
             <div className="relative">
               <Globe className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)]" />
@@ -266,7 +234,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onBlur={handleUrlBlur}
-                placeholder="https://example.com"
+                placeholder={t.modal.urlPlaceholder}
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all font-mono"
               />
             </div>
@@ -275,14 +243,14 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
           {/* App Name */}
           <div>
             <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              App Name *
+              {t.modal.nameLabel}
             </label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Notion, Twitter, Figma"
+              placeholder={t.modal.namePlaceholder}
               className="w-full px-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all"
             />
           </div>
@@ -290,7 +258,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
           {/* Custom Icon URL */}
           <div>
             <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              Icon URL (Optional)
+              {t.modal.iconLabel}
             </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -299,7 +267,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
                   type="text"
                   value={iconUrl}
                   onChange={(e) => setIconUrl(e.target.value)}
-                  placeholder="https://... or auto-fetched favicon"
+                  placeholder={t.modal.iconPlaceholder}
                   className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all text-xs font-mono"
                 />
               </div>
@@ -311,66 +279,24 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
             </div>
           </div>
 
-          {/* Category & Preferred Mode row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Category */}
-            <div>
-              <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-                Category
-              </label>
-              <div className="relative">
-                <Layers className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)] pointer-events-none" />
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as WebAppItem['category'])}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] border border-transparent focus:border-sky-500/50 focus:outline-none appearance-none cursor-pointer"
-                >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat} className="bg-[#17212b]">
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Launch Mode Preference */}
-            <div>
-              <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-                Preferred Launch Mode
-              </label>
-              <div className="grid grid-cols-2 gap-1 bg-[var(--tg-theme-secondary-bg-color,#232e3c)] p-1 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('selection');
-                    setOpenMode('iframe');
-                  }}
-                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                    openMode === 'iframe'
-                      ? 'bg-[var(--tg-theme-button-color,#2b73bc)] text-white shadow-sm'
-                      : 'text-[var(--tg-theme-hint-color,#708499)] hover:text-white'
-                  }`}
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                  <span>Iframe</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('selection');
-                    setOpenMode('external');
-                  }}
-                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                    openMode === 'external'
-                      ? 'bg-[var(--tg-theme-button-color,#2b73bc)] text-white shadow-sm'
-                      : 'text-[var(--tg-theme-hint-color,#708499)] hover:text-white'
-                  }`}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>External</span>
-                </button>
-              </div>
+          {/* Category */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
+              {t.modal.categoryLabel}
+            </label>
+            <div className="relative">
+              <Layers className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)] pointer-events-none" />
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as WebAppItem['category'])}
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] border border-transparent focus:border-sky-500/50 focus:outline-none appearance-none cursor-pointer"
+              >
+                {CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat} className="bg-[#17212b]">
+                    {t.categories[cat] || cat}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -378,7 +304,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
           <div>
             <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1.5 flex items-center gap-1">
               <Palette className="w-3.5 h-3.5" />
-              <span>Accent Glow Color</span>
+              <span>{t.modal.colorLabel}</span>
             </label>
             <div className="flex items-center gap-2">
               {PRESET_COLORS.map((c) => (
@@ -396,13 +322,13 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              Short Description (Optional)
+              {t.modal.descLabel}
             </label>
             <textarea
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this web app do?"
+              placeholder={t.modal.descPlaceholder}
               className="w-full px-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all resize-none"
             />
           </div>
@@ -414,13 +340,13 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] hover:text-white hover:bg-[var(--tg-theme-secondary-bg-color,#232e3c)] transition-colors"
             >
-              Cancel
+              {t.modal.cancel}
             </button>
             <button
               type="submit"
               className="px-5 py-2 rounded-xl bg-[var(--tg-theme-button-color,#2b73bc)] text-[var(--tg-theme-button-text-color,#ffffff)] text-xs font-bold hover:opacity-95 active:scale-95 transition-all shadow-md shadow-blue-500/20"
             >
-              {editingApp ? 'Save Changes' : 'Add to Launcher'}
+              {editingApp ? t.modal.save : t.modal.create}
             </button>
           </div>
         </form>

@@ -39,9 +39,10 @@ let isPollingActive = false;
 let pollingOffset = 0;
 let isWebhookConfigured = false;
 
-// File-based persistence directory & helper
+// File-based persistence directories & helpers
 const DATA_DIR = path.join(__dirname, 'data');
 const APPS_FILE = path.join(DATA_DIR, 'apps-store.json');
+const PREFS_FILE = path.join(DATA_DIR, 'preferences-store.json');
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -49,6 +50,9 @@ function ensureDataDir() {
   }
   if (!fs.existsSync(APPS_FILE)) {
     fs.writeFileSync(APPS_FILE, JSON.stringify({}, null, 2), 'utf-8');
+  }
+  if (!fs.existsSync(PREFS_FILE)) {
+    fs.writeFileSync(PREFS_FILE, JSON.stringify({}, null, 2), 'utf-8');
   }
 }
 
@@ -72,6 +76,39 @@ function writeAppsStore(store: Record<string, any[]>) {
   }
 }
 
+function readPrefsStore(): Record<string, { language: 'en' | 'es' }> {
+  try {
+    ensureDataDir();
+    const data = fs.readFileSync(PREFS_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error('Error reading prefs store:', err);
+    return {};
+  }
+}
+
+function writePrefsStore(store: Record<string, { language: 'en' | 'es' }>) {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(PREFS_FILE, JSON.stringify(store, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error writing prefs store:', err);
+  }
+}
+
+function getUserLanguage(userId: string | number): 'en' | 'es' {
+  const prefs = readPrefsStore();
+  const uid = String(userId);
+  return prefs[uid]?.language || 'en';
+}
+
+function setUserLanguage(userId: string | number, lang: 'en' | 'es') {
+  const prefs = readPrefsStore();
+  const uid = String(userId);
+  prefs[uid] = { ...(prefs[uid] || {}), language: lang };
+  writePrefsStore(prefs);
+}
+
 // Telegram Bot API helper
 async function callTelegramApi(method: string, payload: any, tokenOverride?: string) {
   const token = tokenOverride || runtimeBotToken;
@@ -88,76 +125,104 @@ async function callTelegramApi(method: string, payload: any, tokenOverride?: str
   return data;
 }
 
-// Central handler for Telegram incoming commands (KISS & Telegram Directives)
+// Telegram /start & Command message handler with language selection
 async function handleTelegramMessage(chatId: number, text: string, fromUser: any, currentAppUrl: string) {
-  const firstName = fromUser?.first_name || 'Friend';
+  const userId = fromUser?.id || chatId;
   const cleanCmd = (text || '').trim().toLowerCase();
+  const currentLang = getUserLanguage(userId);
 
-  if (cleanCmd.startsWith('/start') || cleanCmd.startsWith('/launcher')) {
-    const welcome = 
-      `👋 *Hello, ${firstName}!*\n\n` +
-      `Welcome to *Web App Launcher* on Telegram.\n\n` +
-      `Tap below to open your apps dashboard:`;
+  if (cleanCmd.startsWith('/start') || cleanCmd === '/language' || cleanCmd === '/lang') {
+    // Dynamic Language Selection Setup Chat Flow
+    const promptText = 
+      `👋 *Welcome to Web App Launcher!* / *¡Bienvenido al Lanzador Web!*\n\n` +
+      `Please select your interface language:\n` +
+      `Por favor selecciona tu idioma de preferencia:`;
 
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
-      text: welcome,
+      text: promptText,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🇺🇸 English', callback_data: 'set_lang:en' },
+            { text: '🇪🇸 Español', callback_data: 'set_lang:es' }
+          ]
+        ]
+      }
+    });
+  } else if (cleanCmd.startsWith('/launcher')) {
+    // Direct launch command
+    const isEs = currentLang === 'es';
+    const textMsg = isEs
+      ? '🚀 *Lanzador de Apps Web*\nToca el botón a continuación para abrir tu panel de aplicaciones in-app:'
+      : '🚀 *Web App Launcher*\nTap below to open your in-app applications dashboard:';
+    const btnText = isEs ? '🚀 Abrir Lanzador de Apps' : '🚀 Open Web App Launcher';
+
+    await callTelegramApi('sendMessage', {
+      chat_id: chatId,
+      text: textMsg,
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
           [
             {
-              text: '🚀 Open Web App Launcher',
-              web_app: { url: currentAppUrl }
+              text: btnText,
+              web_app: { url: `${currentAppUrl}?lang=${currentLang}` }
             }
           ],
           [
             {
-              text: '➕ Add App',
-              web_app: { url: `${currentAppUrl}?action=add` }
-            },
-            {
-              text: '📖 Help',
-              callback_data: 'help'
+              text: isEs ? '🌐 Cambiar Idioma' : '🌐 Change Language',
+              callback_data: 'reselect_lang'
             }
           ]
         ]
       }
     });
   } else if (cleanCmd.startsWith('/help')) {
-    const help = 
-      `*Web App Launcher Commands:*\n\n` +
-      `• /start - Launch dashboard\n` +
-      `• /launcher - Quick launch button\n` +
-      `• /help - Show commands\n\n` +
-      `*Tip:* Tap the menu button next to the chat bar to launch anytime!`;
+    const isEs = currentLang === 'es';
+    const helpMsg = isEs
+      ? `📖 *Comandos del Lanzador de Apps:*\n\n` +
+        `• /start - Menú de inicio y selección de idioma\n` +
+        `• /launcher - Abrir el lanzador de apps in-app\n` +
+        `• /language - Cambiar idioma (Español / English)\n` +
+        `• /help - Mostrar esta ayuda\n\n` +
+        `_Todas las apps se ejecutan de manera estricta dentro de Telegram._`
+      : `📖 *Web App Launcher Commands:*\n\n` +
+        `• /start - Setup chat & language selection\n` +
+        `• /launcher - Open in-app web apps dashboard\n` +
+        `• /language - Switch language (English / Spanish)\n` +
+        `• /help - Display this guide\n\n` +
+        `_All web apps run strictly inside Telegram._`;
 
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
-      text: help,
+      text: helpMsg,
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
           [
             {
-              text: '🚀 Open Launcher',
-              web_app: { url: currentAppUrl }
+              text: isEs ? '🚀 Abrir Lanzador' : '🚀 Open Launcher',
+              web_app: { url: `${currentAppUrl}?lang=${currentLang}` }
             }
           ]
         ]
       }
     });
   } else {
-    // Default reply for any casual text
+    // Default reply
+    const isEs = currentLang === 'es';
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
-      text: `Tap below to access your Web Apps:`,
+      text: isEs ? 'Toca abajo para abrir tus aplicaciones web:' : 'Tap below to access your Web Apps:',
       reply_markup: {
         inline_keyboard: [
           [
             {
-              text: '🚀 Open Web App Launcher',
-              web_app: { url: currentAppUrl }
+              text: isEs ? '🚀 Abrir Lanzador de Apps' : '🚀 Open Web App Launcher',
+              web_app: { url: `${currentAppUrl}?lang=${currentLang}` }
             }
           ]
         ]
@@ -166,12 +231,67 @@ async function handleTelegramMessage(chatId: number, text: string, fromUser: any
   }
 }
 
-// Background Long-Polling Worker (Ensures bot works without external webhook)
+// Telegram Callback Query handler (Language selection click)
+async function handleTelegramCallback(callbackQuery: any, currentAppUrl: string) {
+  const cbId = callbackQuery.id;
+  const chatId = callbackQuery.message?.chat?.id;
+  const data = callbackQuery.data || '';
+  const fromUser = callbackQuery.from;
+  const userId = fromUser?.id || chatId;
+
+  await callTelegramApi('answerCallbackQuery', { callback_query_id: cbId }).catch(() => {});
+
+  if (data === 'reselect_lang') {
+    return handleTelegramMessage(chatId, '/language', fromUser, currentAppUrl);
+  }
+
+  if (data.startsWith('set_lang:')) {
+    const lang = data.split(':')[1] === 'es' ? 'es' : 'en';
+    setUserLanguage(userId, lang);
+
+    const isEs = lang === 'es';
+    const replyText = isEs
+      ? `🇪🇸 *¡Idioma configurado a Español!*\n\n` +
+        `Bienvenido a tu *Lanzador de Web Apps de Telegram*.\n` +
+        `Todas las aplicaciones se ejecutan estrictamente dentro de Telegram.\n\n` +
+        `Toca el botón a continuación para abrir tu lanzador:`
+      : `🇺🇸 *Language set to English!*\n\n` +
+        `Welcome to your *Telegram Web App Launcher*.\n` +
+        `All web applications run strictly inside Telegram.\n\n` +
+        `Tap the button below to open your launcher:`;
+
+    const btnText = isEs ? '🚀 Abrir Lanzador de Apps' : '🚀 Open Web App Launcher';
+
+    await callTelegramApi('sendMessage', {
+      chat_id: chatId,
+      text: replyText,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: btnText,
+              web_app: { url: `${currentAppUrl}?lang=${lang}` }
+            }
+          ],
+          [
+            {
+              text: isEs ? '🌐 Cambiar Idioma' : '🌐 Change Language',
+              callback_data: 'reselect_lang'
+            }
+          ]
+        ]
+      }
+    });
+  }
+}
+
+// Background Long-Polling Worker
 async function startBotPolling() {
   if (isPollingActive || isWebhookConfigured || !runtimeBotToken) return;
   isPollingActive = true;
 
-  console.log('Telegram Bot Polling started (KISS mode).');
+  console.log('Telegram Bot Polling started (Bi-lingual /start & In-App flow).');
 
   while (isPollingActive && !isWebhookConfigured && runtimeBotToken) {
     try {
@@ -194,26 +314,17 @@ async function startBotPolling() {
               await handleTelegramMessage(chatId, text, fromUser, appUrl).catch(console.error);
             }
           } else if (update.callback_query) {
-            const cbId = update.callback_query.id;
-            const chatId = update.callback_query.message?.chat?.id;
-            const data = update.callback_query.data;
             const appUrl = getAppUrl();
-
-            await callTelegramApi('answerCallbackQuery', { callback_query_id: cbId }).catch(() => {});
-            if (data === 'help' && chatId) {
-              await handleTelegramMessage(chatId, '/help', update.callback_query.from, appUrl).catch(console.error);
-            }
+            await handleTelegramCallback(update.callback_query, appUrl).catch(console.error);
           }
         }
       }
     } catch (err: any) {
-      // If webhook is active, Telegram rejects getUpdates with 409
       if (err.message && err.message.includes('409')) {
         isPollingActive = false;
         isWebhookConfigured = true;
         break;
       }
-      // Wait slightly on error before retry
       await new Promise(r => setTimeout(r, 3000));
     }
   }
@@ -221,7 +332,7 @@ async function startBotPolling() {
   isPollingActive = false;
 }
 
-// Telegram initData verification (HMAC-SHA256 according to core.telegram.org/bots/webapps)
+// Telegram native initData HMAC-SHA256 signature validation (No external logins!)
 function verifyTelegramInitData(initDataString: string, botToken: string): { valid: boolean; user?: any; error?: string } {
   try {
     if (!initDataString) {
@@ -256,7 +367,66 @@ function verifyTelegramInitData(initDataString: string, botToken: string): { val
 
 // ================= API ROUTES =================
 
-// 1. Bot Status
+// 1. In-App Embedded Web Proxy (Guarantees strict in-app iframe embedding without external browser)
+app.get('/api/proxy', async (req: Request, res: Response) => {
+  const targetUrl = req.query.url as string;
+  if (!targetUrl) {
+    return res.status(400).send('Missing url parameter');
+  }
+
+  try {
+    const parsed = new URL(targetUrl);
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,es;q=0.8'
+      }
+    });
+
+    const contentType = response.headers.get('content-type') || 'text/html';
+
+    // Remove restrictive framing headers so app renders smoothly inside Telegram iframe
+    res.removeHeader('X-Frame-Options');
+    res.removeHeader('Content-Security-Policy');
+    res.setHeader('Content-Type', contentType);
+
+    if (contentType.includes('text/html')) {
+      let html = await response.text();
+      // Inject base tag so relative links, assets and css resolve cleanly
+      const baseTag = `<base href="${parsed.origin}${parsed.pathname}">`;
+      if (html.includes('<head>')) {
+        html = html.replace('<head>', `<head>${baseTag}`);
+      } else {
+        html = `${baseTag}${html}`;
+      }
+      return res.send(html);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.send(buffer);
+  } catch (err: any) {
+    res.status(502).send(`Error proxying ${targetUrl}: ${err.message}`);
+  }
+});
+
+// 2. User Language Preferences
+app.get('/api/user/preferences', (req: Request, res: Response) => {
+  const userId = req.query.userId?.toString() || 'default';
+  const language = getUserLanguage(userId);
+  res.json({ userId, language });
+});
+
+app.post('/api/user/preferences', (req: Request, res: Response) => {
+  const { userId, language } = req.body;
+  if (!userId || (language !== 'en' && language !== 'es')) {
+    return res.status(400).json({ error: 'Valid userId and language (en/es) required' });
+  }
+  setUserLanguage(userId, language);
+  res.json({ success: true, language });
+});
+
+// 3. Bot Status
 app.get('/api/bot/status', async (req: Request, res: Response) => {
   const currentAppUrl = getAppUrl(req);
   if (!runtimeBotToken) {
@@ -293,7 +463,7 @@ app.get('/api/bot/status', async (req: Request, res: Response) => {
   }
 });
 
-// 2. Configure Bot (Token + setChatMenuButton + setWebhook)
+// 4. Configure Bot (Token + setChatMenuButton + setWebhook)
 app.post('/api/bot/configure', async (req: Request, res: Response) => {
   const { token, autoSetupWebhook, autoSetupMenuButton } = req.body;
   if (!token || typeof token !== 'string') {
@@ -304,7 +474,6 @@ app.post('/api/bot/configure', async (req: Request, res: Response) => {
   const currentAppUrl = getAppUrl(req);
 
   try {
-    // 1. Test getMe
     const meRes = await callTelegramApi('getMe', {}, cleanToken);
     if (!meRes.ok) {
       return res.status(400).json({ success: false, error: meRes.description || 'Invalid Telegram Bot Token' });
@@ -313,11 +482,9 @@ app.post('/api/bot/configure', async (req: Request, res: Response) => {
     runtimeBotToken = cleanToken;
     cachedBotInfo = meRes.result;
 
-    const setupResults: Record<string, any> = {
-      bot: meRes.result
-    };
+    const setupResults: Record<string, any> = { bot: meRes.result };
 
-    // 2. Setup Chat Menu Button (/setmenubutton directive)
+    // Setup Chat Menu Button
     if (autoSetupMenuButton !== false) {
       try {
         const menuBtnRes = await callTelegramApi('setChatMenuButton', {
@@ -335,7 +502,7 @@ app.post('/api/bot/configure', async (req: Request, res: Response) => {
       }
     }
 
-    // 3. Setup Webhook if HTTPS, otherwise enable Polling
+    // Setup Webhook if HTTPS, otherwise use background Polling
     if (autoSetupWebhook !== false && currentAppUrl.startsWith('https://')) {
       try {
         const webhookUrl = `${currentAppUrl}/api/telegram-webhook`;
@@ -366,7 +533,7 @@ app.post('/api/bot/configure', async (req: Request, res: Response) => {
   }
 });
 
-// 3. Telegram Webhook Handler
+// 5. Telegram Webhook Handler
 app.post('/api/telegram-webhook', async (req: Request, res: Response) => {
   res.status(200).send('OK');
 
@@ -383,47 +550,52 @@ app.post('/api/telegram-webhook', async (req: Request, res: Response) => {
       await handleTelegramMessage(chatId, text, fromUser, currentAppUrl).catch(console.error);
     }
   } else if (update.callback_query) {
-    const cbId = update.callback_query.id;
-    const chatId = update.callback_query.message?.chat?.id;
-    const data = update.callback_query.data;
-
-    await callTelegramApi('answerCallbackQuery', { callback_query_id: cbId }).catch(() => {});
-    if (data === 'help' && chatId) {
-      await handleTelegramMessage(chatId, '/help', update.callback_query.from, currentAppUrl).catch(console.error);
-    }
+    await handleTelegramCallback(update.callback_query, currentAppUrl).catch(console.error);
   }
 });
 
-// 4. Test Bot Command endpoint
+// 6. Test Bot Command endpoint
 app.post('/api/bot/test-command', async (req: Request, res: Response) => {
-  const { command, user } = req.body;
+  const { command, user, lang } = req.body;
   const currentAppUrl = getAppUrl(req);
-  const name = user?.first_name || 'Friend';
+  const selectedLang = lang === 'es' ? 'es' : 'en';
 
-  if (command === '/start' || command === '/launcher') {
+  if (command === '/start' || command === '/language') {
     return res.json({
-      text: `👋 Hello, ${name}!\n\nWelcome to Web App Launcher on Telegram.\n\nTap below to open your apps dashboard:`,
+      text: `👋 Welcome! Please choose your preferred language:\n\n👋 ¡Bienvenido! Por favor elija su idioma preferido:`,
       keyboard: [
-        [{ text: '🚀 Open Web App Launcher', url: currentAppUrl }],
-        [{ text: '➕ Add App', url: `${currentAppUrl}?action=add` }]
+        [
+          { text: '🇺🇸 English', callback_data: 'set_lang:en' },
+          { text: '🇪🇸 Español', callback_data: 'set_lang:es' }
+        ]
       ]
     });
   }
 
+  const isEs = selectedLang === 'es';
   res.json({
-    text: `Web App Launcher Commands:\n\n• /start - Launch dashboard\n• /launcher - Quick launch button\n• /help - Show commands`,
-    keyboard: [[{ text: '🚀 Launch', url: currentAppUrl }]]
+    text: isEs
+      ? `🚀 *Lanzador de Apps Web*\nToca el botón a continuación para abrir tu panel de aplicaciones in-app:`
+      : `🚀 *Web App Launcher*\nTap below to open your in-app applications dashboard:`,
+    keyboard: [
+      [
+        {
+          text: isEs ? '🚀 Abrir Lanzador de Apps' : '🚀 Open Web App Launcher',
+          url: `${currentAppUrl}?lang=${selectedLang}`
+        }
+      ]
+    ]
   });
 });
 
-// 5. Auth / Validate InitData
+// 7. Auth / Validate InitData (Native Telegram Only - No external logins)
 app.post('/api/auth/validate-init-data', (req: Request, res: Response) => {
   const { initData } = req.body;
 
   if (!initData) {
     return res.json({
       valid: false,
-      reason: 'No initData provided'
+      reason: 'No initData provided (Standard preview mode)'
     });
   }
 
@@ -447,7 +619,7 @@ app.post('/api/auth/validate-init-data', (req: Request, res: Response) => {
   res.json(result);
 });
 
-// 6. User Apps API
+// 8. User Apps Persistence API
 app.get('/api/apps', (req: Request, res: Response) => {
   const userId = req.query.userId?.toString() || 'default';
   const store = readAppsStore();
@@ -486,59 +658,6 @@ app.post('/api/apps/reset', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Reset to default apps' });
 });
 
-// 7. Check Embed Header
-app.get('/api/check-embed', async (req: Request, res: Response) => {
-  const targetUrl = req.query.url as string;
-  if (!targetUrl) {
-    return res.status(400).json({ error: 'Missing url parameter' });
-  }
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-
-    const checkRes = await fetch(targetUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    const xFrame = checkRes.headers.get('x-frame-options');
-    const csp = checkRes.headers.get('content-security-policy');
-
-    let allowsIframe = true;
-    let reason = 'Allows iframe embedding';
-
-    if (xFrame) {
-      const lower = xFrame.toLowerCase();
-      if (lower.includes('deny') || lower.includes('sameorigin')) {
-        allowsIframe = false;
-        reason = `Blocked by header: X-Frame-Options: ${xFrame}`;
-      }
-    }
-
-    res.json({
-      url: targetUrl,
-      allowsIframe,
-      reason,
-      headers: {
-        xFrameOptions: xFrame,
-        csp: csp
-      }
-    });
-  } catch (err: any) {
-    res.json({
-      url: targetUrl,
-      allowsIframe: true,
-      reason: `Will attempt embed (${err.message})`,
-      headers: {}
-    });
-  }
-});
-
 // Start Server
 async function startServer() {
   const isDev = process.env.NODE_ENV !== 'production';
@@ -558,7 +677,6 @@ async function startServer() {
     });
   }
 
-  // If token is already present via environment, start polling or check status
   if (runtimeBotToken) {
     startBotPolling();
   }

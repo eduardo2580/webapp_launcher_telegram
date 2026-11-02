@@ -1,4 +1,6 @@
-export type OpenMode = 'iframe' | 'external' | 'telegram';
+import { Language } from './i18n/translations';
+
+export type { Language };
 
 export interface WebAppItem {
   id: string;
@@ -7,11 +9,9 @@ export interface WebAppItem {
   iconUrl?: string;
   category: 'Social' | 'Productivity' | 'Utilities' | 'Media' | 'News' | 'Games' | 'Custom';
   description?: string;
-  openMode: OpenMode;
   isDefault?: boolean;
   accentColor?: string;
   createdAt: number;
-  knownBlockedIframe?: boolean;
 }
 
 export interface TelegramUser {
@@ -24,22 +24,6 @@ export interface TelegramUser {
   is_premium?: boolean;
 }
 
-export interface BotStatus {
-  configured: boolean;
-  botUsername?: string;
-  botName?: string;
-  webhookUrl?: string;
-  menuButtonConfigured?: boolean;
-  error?: string;
-  appUrl?: string;
-}
-
-export interface EmbedCheckResult {
-  url: string;
-  allowsIframe: boolean;
-  reason?: string;
-  headers?: {
-    xFrameOptions?: string | null;
-    csp?: string | null;
-  };
+export interface UserPreferences {
+  language: Language;
 }

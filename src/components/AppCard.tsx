@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
 import { 
   Play, 
-  ExternalLink, 
-  Maximize2, 
   Trash2, 
   Edit3, 
-  ShieldAlert, 
-  Globe,
-  Share2,
-  Check
+  Globe, 
+  Share2, 
+  Check,
+  Smartphone
 } from 'lucide-react';
-import { WebAppItem } from '../types';
-import { triggerHaptic, openExternalUrl } from '../services/telegram';
+import { WebAppItem, Language } from '../types';
+import { translations } from '../i18n/translations';
+import { triggerHaptic } from '../services/telegram';
 
 interface AppCardProps {
   app: WebAppItem;
+  language: Language;
   onLaunchEmbed: (app: WebAppItem) => void;
   onEdit: (app: WebAppItem) => void;
   onDelete: (appId: string) => void;
@@ -22,14 +22,15 @@ interface AppCardProps {
 
 export const AppCard: React.FC<AppCardProps> = ({
   app,
+  language,
   onLaunchEmbed,
   onEdit,
   onDelete
 }) => {
   const [imageError, setImageError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const t = translations[language];
 
-  // Auto fallback favicon generator
   const getFaviconUrl = (url: string) => {
     try {
       const parsed = new URL(url);
@@ -47,13 +48,10 @@ export const AppCard: React.FC<AppCardProps> = ({
     }
   })();
 
-  const handlePrimaryLaunch = () => {
+  const handleLaunch = () => {
     triggerHaptic('medium');
-    if (app.openMode === 'external') {
-      openExternalUrl(app.url);
-    } else {
-      onLaunchEmbed(app);
-    }
+    // STRICT IN-APP ONLY: Always opens embedded viewer inside Telegram
+    onLaunchEmbed(app);
   };
 
   const handleCopyLink = (e: React.MouseEvent) => {
@@ -76,10 +74,9 @@ export const AppCard: React.FC<AppCardProps> = ({
 
   return (
     <div className="group relative flex flex-col justify-between rounded-2xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] border border-[var(--tg-theme-section-bg-color,#1c2733)] hover:border-sky-500/40 p-4 transition-all duration-200 hover:shadow-lg hover:shadow-sky-500/5">
-      {/* Top Header inside Card */}
       <div>
         <div className="flex items-start justify-between gap-3 mb-3">
-          {/* Icon + Name */}
+          {/* Icon + Title */}
           <div className="flex items-center gap-3 min-w-0">
             <div 
               className="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden bg-[var(--tg-theme-bg-color,#17212b)] border border-white/10 shadow-inner"
@@ -115,11 +112,11 @@ export const AppCard: React.FC<AppCardProps> = ({
             </div>
           </div>
 
-          {/* Action icons (Edit / Delete / Share) */}
+          {/* Quick Actions (Share, Edit, Delete) */}
           <div className="flex items-center gap-1 opacity-80 sm:opacity-40 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handleCopyLink}
-              title={copied ? "Copied!" : "Copy link"}
+              title={copied ? t.card.copied : t.card.copyLink}
               className="p-1.5 rounded-lg text-[var(--tg-theme-hint-color,#708499)] hover:text-sky-400 hover:bg-[var(--tg-theme-bg-color,#17212b)] transition-colors"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
@@ -129,7 +126,7 @@ export const AppCard: React.FC<AppCardProps> = ({
                 triggerHaptic('selection');
                 onEdit(app);
               }}
-              title="Edit app"
+              title={t.card.edit}
               className="p-1.5 rounded-lg text-[var(--tg-theme-hint-color,#708499)] hover:text-sky-400 hover:bg-[var(--tg-theme-bg-color,#17212b)] transition-colors"
             >
               <Edit3 className="w-3.5 h-3.5" />
@@ -139,7 +136,7 @@ export const AppCard: React.FC<AppCardProps> = ({
                 triggerHaptic('warning');
                 onDelete(app.id);
               }}
-              title="Delete app"
+              title={t.card.delete}
               className="p-1.5 rounded-lg text-[var(--tg-theme-hint-color,#708499)] hover:text-rose-400 hover:bg-[var(--tg-theme-bg-color,#17212b)] transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -147,69 +144,35 @@ export const AppCard: React.FC<AppCardProps> = ({
           </div>
         </div>
 
-        {/* Description if present */}
+        {/* Description */}
         {app.description && (
           <p className="text-xs text-[var(--tg-theme-subtitle-text-color,#8292a1)] line-clamp-2 mb-3 leading-relaxed">
             {app.description}
           </p>
         )}
 
-        {/* Badges */}
+        {/* Category & In-App Badges */}
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${categoryColorMap[app.category] || categoryColorMap.Custom}`}>
-            {app.category}
+            {t.categories[app.category] || app.category}
           </span>
 
-          {app.knownBlockedIframe && (
-            <span 
-              title="This site restricts direct iframe embedding (X-Frame-Options: DENY). Recommended: Open in External/Telegram browser."
-              className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1"
-            >
-              <ShieldAlert className="w-2.5 h-2.5" />
-              <span>X-Frame Guard</span>
-            </span>
-          )}
-
-          <span className="text-[10px] text-[var(--tg-theme-hint-color,#708499)] px-1.5 py-0.5 rounded bg-black/20">
-            {app.openMode === 'external' ? 'External tab' : 'Iframe viewer'}
+          <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Smartphone className="w-2.5 h-2.5" />
+            <span>{t.card.inAppEmbed}</span>
           </span>
         </div>
       </div>
 
-      {/* Buttons: Primary Quick Launch + Dual Launch Controls */}
-      <div className="pt-2 border-t border-white/5 flex items-center gap-2">
+      {/* Primary In-App Launch Button */}
+      <div className="pt-2 border-t border-white/5">
         <button
-          onClick={handlePrimaryLaunch}
-          className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[var(--tg-theme-button-color,#2b73bc)] text-[var(--tg-theme-button-text-color,#ffffff)] text-xs font-semibold hover:opacity-95 active:scale-95 transition-all shadow-sm shadow-blue-500/20"
+          onClick={handleLaunch}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[var(--tg-theme-button-color,#2b73bc)] text-[var(--tg-theme-button-text-color,#ffffff)] text-xs font-semibold hover:opacity-95 active:scale-95 transition-all shadow-sm shadow-blue-500/20"
         >
           <Play className="w-3.5 h-3.5 fill-current" />
-          <span>Launch</span>
+          <span>{t.card.launch}</span>
         </button>
-
-        {/* Secondary Mode Launcher (If default is external, give Iframe option; if default is iframe, give External option) */}
-        {app.openMode === 'external' ? (
-          <button
-            onClick={() => {
-              triggerHaptic('light');
-              onLaunchEmbed(app);
-            }}
-            title="Try opening inside Iframe viewer"
-            className="p-2 rounded-xl bg-[var(--tg-theme-bg-color,#17212b)] text-[var(--tg-theme-hint-color,#708499)] hover:text-sky-400 hover:border-sky-500/30 border border-white/5 transition-colors"
-          >
-            <Maximize2 className="w-4 h-4" />
-          </button>
-        ) : (
-          <button
-            onClick={() => {
-              triggerHaptic('light');
-              openExternalUrl(app.url);
-            }}
-            title="Open directly in external browser window"
-            className="p-2 rounded-xl bg-[var(--tg-theme-bg-color,#17212b)] text-[var(--tg-theme-hint-color,#708499)] hover:text-sky-400 hover:border-sky-500/30 border border-white/5 transition-colors"
-          >
-            <ExternalLink className="w-4 h-4" />
-          </button>
-        )}
       </div>
     </div>
   );
