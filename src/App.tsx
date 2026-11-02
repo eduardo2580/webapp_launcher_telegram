@@ -67,18 +67,12 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 2500);
   }, []);
 
-  // Sync language
+  // Sync language with Telegram Cloud Storage
   const handleToggleLanguage = useCallback((newLang: Language) => {
     setLanguage(newLang);
-    localStorage.setItem('tma_lang', newLang);
+    try { localStorage.setItem('tma_lang', newLang); } catch {}
     cloudStorageSetItem('tma_lang', newLang).catch(() => {});
-    const userId = currentUser?.id || 'guest';
-    fetch('/api/user/preferences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, language: newLang })
-    }).catch(() => {});
-  }, [currentUser?.id]);
+  }, []);
 
   // Init Telegram
   useEffect(() => {
@@ -95,6 +89,13 @@ export default function App() {
     const paramLang = searchParams.get('lang');
     if (paramLang === 'es' || paramLang === 'en') {
       setLanguage(paramLang);
+    } else {
+      // Load saved language from Telegram Cloud Storage
+      cloudStorageGetItem('tma_lang').then((savedLang) => {
+        if (savedLang === 'es' || savedLang === 'en') {
+          setLanguage(savedLang);
+        }
+      });
     }
 
     const initDataStr = getInitDataString();
@@ -117,69 +118,52 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Load apps from Telegram Cloud Storage (with fallback to localStorage & backend)
+  // Load apps directly from Telegram Cloud Storage (with fallback to local storage)
   useEffect(() => {
     const userId = currentUser?.id || 'guest';
     const localKey = `tma_apps_${userId}`;
 
-    // 1. Check Telegram Cloud Storage first
+    // 1. Query Telegram Cloud Storage
     cloudStorageGetItem('tma_cloud_apps').then((cloudVal) => {
       if (cloudVal) {
         try {
           const parsed = JSON.parse(cloudVal);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setApps(parsed);
-            localStorage.setItem(localKey, cloudVal);
+            try { localStorage.setItem(localKey, cloudVal); } catch {}
             return;
           }
         } catch {}
       }
 
       // 2. Fallback to localStorage
-      const cached = localStorage.getItem(localKey);
-      let initialList: WebAppItem[] = DEFAULT_APPS;
-      if (cached) {
-        try {
+      try {
+        const cached = localStorage.getItem(localKey);
+        if (cached) {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            initialList = parsed;
+            setApps(parsed);
+            return;
           }
-        } catch {}
-      }
-      setApps(initialList);
+        }
+      } catch {}
 
-      // 3. Fallback sync to backend
-      fetch(`/api/apps?userId=${userId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.hasCustomApps && Array.isArray(data.apps)) {
-            setApps(data.apps);
-            localStorage.setItem(localKey, JSON.stringify(data.apps));
-            cloudStorageSetItem('tma_cloud_apps', JSON.stringify(data.apps)).catch(() => {});
-          }
-        })
-        .catch(() => {});
+      // 3. Fallback to default presets
+      setApps(DEFAULT_APPS);
     });
   }, [currentUser?.id]);
 
-  // Save apps list to Telegram Cloud Storage & LocalStorage
+  // Save apps list directly to Telegram Cloud Storage & LocalStorage
   const handleSaveAppsList = useCallback((updatedApps: WebAppItem[]) => {
     const userId = currentUser?.id || 'guest';
     const localKey = `tma_apps_${userId}`;
     const serialized = JSON.stringify(updatedApps);
 
     setApps(updatedApps);
-    localStorage.setItem(localKey, serialized);
+    try { localStorage.setItem(localKey, serialized); } catch {}
 
-    // Save directly to Telegram Cloud Storage (persists username, password, and app list)
+    // Persist apps and credentials directly in Telegram Cloud Storage
     cloudStorageSetItem('tma_cloud_apps', serialized).catch(() => {});
-
-    // Sync to backend store
-    fetch('/api/apps', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, apps: updatedApps })
-    }).catch(() => {});
   }, [currentUser?.id]);
 
   // Add / Edit app
