@@ -6,7 +6,7 @@ import {
   Globe, 
   Share2, 
   Check,
-  Smartphone
+  Lock
 } from 'lucide-react';
 import { WebAppItem, Language } from '../types';
 import { translations } from '../i18n/translations';
@@ -50,7 +50,6 @@ export const AppCard: React.FC<AppCardProps> = ({
 
   const handleLaunch = () => {
     triggerHaptic('medium');
-    // STRICT IN-APP ONLY: Always opens embedded viewer inside Telegram
     onLaunchEmbed(app);
   };
 
@@ -61,6 +60,8 @@ export const AppCard: React.FC<AppCardProps> = ({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const hasCredentials = Boolean(app.username || app.password);
 
   const categoryColorMap: Record<string, string> = {
     Social: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
@@ -79,7 +80,7 @@ export const AppCard: React.FC<AppCardProps> = ({
           {/* Icon + Title */}
           <div className="flex items-center gap-3 min-w-0">
             <div 
-              className="w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden bg-[var(--tg-theme-bg-color,#17212b)] border border-white/10 shadow-inner"
+              className="w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden bg-[var(--tg-theme-bg-color,#17212b)] border border-white/10 shadow-inner"
               style={{
                 boxShadow: app.accentColor ? `0 0 15px ${app.accentColor}25` : undefined
               }}
@@ -88,12 +89,12 @@ export const AppCard: React.FC<AppCardProps> = ({
                 <img
                   src={app.iconUrl || getFaviconUrl(app.url)}
                   alt={app.name}
-                  className="w-8 h-8 object-contain"
+                  className="w-7 h-7 object-contain"
                   onError={() => setImageError(true)}
                 />
               ) : (
                 <div 
-                  className="w-full h-full flex items-center justify-center font-bold text-lg text-white"
+                  className="w-full h-full flex items-center justify-center font-bold text-base text-white"
                   style={{ backgroundColor: app.accentColor || '#3b82f6' }}
                 >
                   {app.name.charAt(0).toUpperCase()}
@@ -151,16 +152,21 @@ export const AppCard: React.FC<AppCardProps> = ({
           </p>
         )}
 
-        {/* Category & In-App Badges */}
+        {/* Badges */}
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${categoryColorMap[app.category] || categoryColorMap.Custom}`}>
             {t.categories[app.category] || app.category}
           </span>
 
-          <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <Smartphone className="w-2.5 h-2.5" />
-            <span>{t.card.inAppEmbed}</span>
-          </span>
+          {hasCredentials && (
+            <span 
+              title={t.card.hasCredentials}
+              className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full flex items-center gap-1"
+            >
+              <Lock className="w-2.5 h-2.5" />
+              <span>{t.card.hasCredentials}</span>
+            </span>
+          )}
         </div>
       </div>
 

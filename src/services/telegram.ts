@@ -58,6 +58,15 @@ declare global {
           notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
           selectionChanged: () => void;
         };
+        CloudStorage?: {
+          setItem: (key: string, value: string, callback?: (err: Error | null, stored?: boolean) => void) => void;
+          getItem: (key: string, callback: (err: Error | null, value?: string) => void) => void;
+          getItems: (keys: string[], callback: (err: Error | null, values?: Record<string, string>) => void) => void;
+          removeItem: (key: string, callback?: (err: Error | null, removed?: boolean) => void) => void;
+          removeItems: (keys: string[], callback?: (err: Error | null, removed?: boolean) => void) => void;
+          getKeys: (callback: (err: Error | null, keys?: string[]) => void) => void;
+        };
+        isVersionAtLeast?: (version: string) => boolean;
         expand: () => void;
         close: () => void;
         ready: () => void;
@@ -118,7 +127,6 @@ export function triggerHaptic(
 ) {
   const tg = getTelegramWebApp();
   if (!tg?.HapticFeedback) {
-    // Fallback vibration for standard browsers if supported
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       if (type === 'light' || type === 'selection') navigator.vibrate(10);
       else if (type === 'medium') navigator.vibrate(25);
@@ -135,23 +143,98 @@ export function triggerHaptic(
     } else {
       tg.HapticFeedback.impactOccurred(type);
     }
-  } catch (err) {
-    // Ignore in unsupported environments
-  }
+  } catch {}
 }
 
-export function openExternalUrl(url: string) {
+// ================= Safe Telegram Cloud Storage Helpers =================
+// Telegram added CloudStorage in Bot API 6.9. Calling it in version 6.0 causes:
+// "[Telegram.WebApp] CloudStorage is not supported in version 6.0"
+// We verify version compatibility with isVersionAtLeast('6.9') before invoking.
+
+export function isCloudStorageAvailable(): boolean {
   const tg = getTelegramWebApp();
-  triggerHaptic('light');
+  if (!tg?.CloudStorage) return false;
 
-  if (tg && typeof tg.openLink === 'function') {
-    try {
-      tg.openLink(url);
-      return;
-    } catch {
-      // Fallback
+  try {
+    // 1. Check official isVersionAtLeast
+    if (typeof tg.isVersionAtLeast === 'function') {
+      return tg.isVersionAtLeast('6.9');
     }
-  }
 
-  window.open(url, '_blank', 'noopener,noreferrer');
+    // 2. Parse version string fallback
+    if (tg.version) {
+      const parts = tg.version.split('.').map(Number);
+      if (parts[0] > 6 || (parts[0] === 6 && parts[1] >= 9)) {
+        return true;
+      }
+    }
+  } catch {}
+
+  return false;
+}
+
+export function cloudStorageSetItem(key: string, value: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    // Always sync locally first for instant availability
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+
+    // Only attempt Telegram CloudStorage if version is 6.9+
+    if (isCloudStorageAvailable()) {
+      const tg = getTelegramWebApp();
+      try {
+        tg?.CloudStorage?.setItem(key, value, (err, stored) => {
+          resolve(!err && (stored ?? true));
+        });
+        return;
+      } catch {}
+    }
+
+    resolve(true);
+  });
+}
+
+export function cloudStorageGetItem(key: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    // Read local cache immediately
+    const localVal = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+
+    // Only query Telegram CloudStorage if version is 6.9+
+    if (isCloudStorageAvailable()) {
+      const tg = getTelegramWebApp();
+      try {
+        tg?.CloudStorage?.getItem(key, (err, cloudVal) => {
+          if (!err && cloudVal !== undefined && cloudVal !== null) {
+            resolve(cloudVal);
+          } else {
+            resolve(localVal);
+          }
+        });
+        return;
+      } catch {}
+    }
+
+    resolve(localVal);
+  });
+}
+
+export function cloudStorageRemoveItem(key: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+
+    if (isCloudStorageAvailable()) {
+      const tg = getTelegramWebApp();
+      try {
+        tg?.CloudStorage?.removeItem(key, (err, removed) => {
+          resolve(!err && (removed ?? true));
+        });
+        return;
+      } catch {}
+    }
+
+    resolve(true);
+  });
 }

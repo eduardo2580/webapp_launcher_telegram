@@ -6,7 +6,12 @@ import {
   Image, 
   Layers, 
   ShieldAlert,
-  Palette
+  Palette,
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  Cloud
 } from 'lucide-react';
 import { WebAppItem, Language } from '../types';
 import { translations } from '../i18n/translations';
@@ -57,6 +62,9 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
   const [category, setCategory] = useState<WebAppItem['category']>('Utilities');
   const [description, setDescription] = useState('');
   const [accentColor, setAccentColor] = useState('#3b82f6');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const t = translations[language];
 
@@ -68,6 +76,8 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
       setCategory(editingApp.category);
       setDescription(editingApp.description || '');
       setAccentColor(editingApp.accentColor || '#3b82f6');
+      setUsername(editingApp.username || '');
+      setPassword(editingApp.password || '');
     } else {
       setName('');
       setUrl('');
@@ -75,7 +85,10 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
       setCategory('Utilities');
       setDescription('');
       setAccentColor('#3b82f6');
+      setUsername('');
+      setPassword('');
     }
+    setShowPassword(false);
     setError('');
   }, [editingApp, isOpen]);
 
@@ -148,6 +161,8 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
       category,
       description: description.trim() || undefined,
       accentColor,
+      username: username.trim() || undefined,
+      password: password.trim() || undefined,
       isDefault: editingApp?.isDefault ?? false,
       createdAt: editingApp?.createdAt ?? Date.now()
     };
@@ -168,14 +183,14 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-[var(--tg-theme-secondary-bg-color,#232e3c)] mb-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
-              <Sparkles className="w-4 h-4" />
+              <Cloud className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-base font-bold text-[var(--tg-theme-text-color,#ffffff)]">
                 {editingApp ? t.modal.editTitle : t.modal.addTitle}
               </h2>
-              <p className="text-xs text-[var(--tg-theme-hint-color,#708499)]">
-                {t.modal.subtitle}
+              <p className="text-xs text-[var(--tg-theme-hint-color,#708499)] flex items-center gap-1">
+                <span>{t.modal.subtitle}</span>
               </p>
             </div>
           </div>
@@ -190,7 +205,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
           </button>
         </div>
 
-        {/* Quick Presets (Only on Add) */}
+        {/* Quick Presets */}
         {!editingApp && (
           <div className="mb-4">
             <span className="text-[11px] font-semibold text-[var(--tg-theme-hint-color,#708499)] uppercase tracking-wider block mb-2">
@@ -255,6 +270,66 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
             />
           </div>
 
+          {/* Telegram Cloud Storage Credentials Section */}
+          <div className="p-3.5 rounded-2xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] border border-sky-500/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-sky-400" />
+                <span className="text-xs font-bold text-[var(--tg-theme-text-color,#ffffff)]">
+                  {t.modal.credentialsSection}
+                </span>
+              </div>
+              <span className="text-[10px] bg-sky-500/15 text-sky-400 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Cloud className="w-2.5 h-2.5" />
+                <span>Cloud</span>
+              </span>
+            </div>
+            <p className="text-[11px] text-[var(--tg-theme-hint-color,#708499)]">
+              {t.modal.credentialsDesc}
+            </p>
+
+            {/* Username / Email */}
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--tg-theme-hint-color,#708499)] mb-1">
+                {t.modal.usernameLabel}
+              </label>
+              <div className="relative">
+                <User className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)]" />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={t.modal.usernamePlaceholder}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[var(--tg-theme-bg-color,#17212b)] text-xs text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--tg-theme-hint-color,#708499)] mb-1">
+                {t.modal.passwordLabel}
+              </label>
+              <div className="relative">
+                <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)]" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={t.modal.passwordPlaceholder}
+                  className="w-full pl-8 pr-9 py-1.5 rounded-xl bg-[var(--tg-theme-bg-color,#17212b)] text-xs text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="p-1 text-[var(--tg-theme-hint-color,#708499)] hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2"
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Custom Icon URL */}
           <div>
             <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
@@ -268,7 +343,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
                   value={iconUrl}
                   onChange={(e) => setIconUrl(e.target.value)}
                   placeholder={t.modal.iconPlaceholder}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all text-xs font-mono"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-xs text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all font-mono"
                 />
               </div>
               {iconUrl && (
@@ -300,7 +375,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
             </div>
           </div>
 
-          {/* Accent Color selection */}
+          {/* Accent Color */}
           <div>
             <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1.5 flex items-center gap-1">
               <Palette className="w-3.5 h-3.5" />
@@ -333,7 +408,7 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
             />
           </div>
 
-          {/* Footer Submit Buttons */}
+          {/* Footer Submit */}
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-[var(--tg-theme-secondary-bg-color,#232e3c)]">
             <button
               type="button"

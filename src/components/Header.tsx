@@ -50,11 +50,17 @@ export const Header: React.FC<HeaderProps> = ({
               </svg>
             </div>
             <div>
-              <h1 className="text-sm font-bold text-[var(--tg-theme-text-color,#ffffff)] tracking-tight">
-                {t.appName}
-              </h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-sm font-bold text-[var(--tg-theme-text-color,#ffffff)] tracking-tight">
+                  {t.appName}
+                </h1>
+                <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/30 font-medium px-1.5 py-0.2 rounded-full flex items-center gap-0.5">
+                  <span>☁️</span>
+                  <span className="hidden xs:inline">{t.cloudSynced}</span>
+                </span>
+              </div>
               {user && (
-                <p className="text-[11px] text-[var(--tg-theme-hint-color,#708499)] leading-none">
+                <p className="text-[11px] text-[var(--tg-theme-hint-color,#708499)] leading-none mt-0.5">
                   {user.first_name}
                 </p>
               )}

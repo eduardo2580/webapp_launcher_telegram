@@ -6,6 +6,7 @@ export interface Translations {
   addApp: string;
   resetDefaults: string;
   switchTheme: string;
+  cloudSynced: string;
   categories: {
     All: string;
     Social: string;
@@ -23,12 +24,17 @@ export interface Translations {
     inAppEmbed: string;
     copyLink: string;
     copied: string;
+    hasCredentials: string;
   };
   viewer: {
     backToLauncher: string;
     refresh: string;
     loading: string;
     connectingTo: string;
+    copyUser: string;
+    copyPass: string;
+    userCopied: string;
+    passCopied: string;
   };
   modal: {
     addTitle: string;
@@ -45,6 +51,12 @@ export interface Translations {
     colorLabel: string;
     descLabel: string;
     descPlaceholder: string;
+    credentialsSection: string;
+    credentialsDesc: string;
+    usernameLabel: string;
+    usernamePlaceholder: string;
+    passwordLabel: string;
+    passwordPlaceholder: string;
     cancel: string;
     save: string;
     create: string;
@@ -65,6 +77,7 @@ export interface Translations {
     updated: string;
     deleted: string;
     reset: string;
+    cloudSynced: string;
   };
   empty: {
     title: string;
@@ -81,6 +94,7 @@ export const translations: Record<Language, Translations> = {
     addApp: 'Add App',
     resetDefaults: 'Reset default apps',
     switchTheme: 'Toggle theme',
+    cloudSynced: 'Telegram Cloud',
     categories: {
       All: 'All',
       Social: 'Social',
@@ -97,18 +111,23 @@ export const translations: Record<Language, Translations> = {
       delete: 'Delete',
       inAppEmbed: 'In-App',
       copyLink: 'Copy URL',
-      copied: 'Copied!'
+      copied: 'Copied!',
+      hasCredentials: 'Saved login'
     },
     viewer: {
       backToLauncher: 'Launcher',
       refresh: 'Refresh',
       loading: 'Loading application...',
-      connectingTo: 'Connecting to'
+      connectingTo: 'Connecting to',
+      copyUser: 'User',
+      copyPass: 'Pass',
+      userCopied: 'Username copied!',
+      passCopied: 'Password copied!'
     },
     modal: {
       addTitle: 'Add Web App',
       editTitle: 'Edit Web App',
-      subtitle: 'Add any website to your in-app launcher',
+      subtitle: 'Synced with Telegram Cloud Storage',
       quickSuggestions: 'Quick Suggestions',
       urlLabel: 'Web URL *',
       urlPlaceholder: 'https://example.com',
@@ -120,8 +139,14 @@ export const translations: Record<Language, Translations> = {
       colorLabel: 'Accent Color',
       descLabel: 'Description (Optional)',
       descPlaceholder: 'Short description...',
+      credentialsSection: 'Telegram Cloud Login Credentials',
+      credentialsDesc: 'Saved securely in Telegram Cloud Storage for quick autofill/copying',
+      usernameLabel: 'Login Username / Email (Optional)',
+      usernamePlaceholder: 'user@example.com or username',
+      passwordLabel: 'Login Password / Key (Optional)',
+      passwordPlaceholder: '••••••••••••',
       cancel: 'Cancel',
-      save: 'Save',
+      save: 'Save Changes',
       create: 'Add to Launcher',
       errors: {
         nameRequired: 'App name is required',
@@ -131,15 +156,16 @@ export const translations: Record<Language, Translations> = {
     },
     deleteModal: {
       title: 'Delete this web app?',
-      message: 'This app will be removed from your personal launcher.',
+      message: 'This app and any saved cloud credentials will be removed.',
       cancel: 'Cancel',
       confirm: 'Delete'
     },
     toasts: {
-      added: 'Added to launcher',
-      updated: 'App updated',
-      deleted: 'App deleted',
-      reset: 'Reset to default apps'
+      added: 'Saved to Telegram Cloud',
+      updated: 'Updated in Telegram Cloud',
+      deleted: 'Removed from Telegram Cloud',
+      reset: 'Reset to default apps',
+      cloudSynced: 'Synced with Telegram Cloud Storage'
     },
     empty: {
       title: 'No apps found',
@@ -154,6 +180,7 @@ export const translations: Record<Language, Translations> = {
     addApp: 'Añadir App',
     resetDefaults: 'Restablecer apps',
     switchTheme: 'Cambiar tema',
+    cloudSynced: 'Nube de Telegram',
     categories: {
       All: 'Todas',
       Social: 'Social',
@@ -170,18 +197,23 @@ export const translations: Record<Language, Translations> = {
       delete: 'Eliminar',
       inAppEmbed: 'In-App',
       copyLink: 'Copiar URL',
-      copied: '¡Copiado!'
+      copied: '¡Copiado!',
+      hasCredentials: 'Login guardado'
     },
     viewer: {
       backToLauncher: 'Lanzador',
       refresh: 'Actualizar',
       loading: 'Cargando aplicación...',
-      connectingTo: 'Conectando con'
+      connectingTo: 'Conectando con',
+      copyUser: 'Usuario',
+      copyPass: 'Clave',
+      userCopied: '¡Usuario copiado!',
+      passCopied: '¡Contraseña copiada!'
     },
     modal: {
       addTitle: 'Añadir Web App',
       editTitle: 'Editar Web App',
-      subtitle: 'Añade cualquier sitio a tu lanzador in-app',
+      subtitle: 'Sincronizado con Telegram Cloud Storage',
       quickSuggestions: 'Sugerencias Rápidas',
       urlLabel: 'URL Web *',
       urlPlaceholder: 'https://ejemplo.com',
@@ -193,8 +225,14 @@ export const translations: Record<Language, Translations> = {
       colorLabel: 'Color de Acento',
       descLabel: 'Descripción (Opcional)',
       descPlaceholder: 'Breve descripción...',
+      credentialsSection: 'Credenciales de Login en Telegram Cloud',
+      credentialsDesc: 'Guardado de forma segura en Telegram Cloud Storage',
+      usernameLabel: 'Usuario o Correo de Acceso (Opcional)',
+      usernamePlaceholder: 'usuario@ejemplo.com o nombre',
+      passwordLabel: 'Contraseña o Clave de Acceso (Opcional)',
+      passwordPlaceholder: '••••••••••••',
       cancel: 'Cancelar',
-      save: 'Guardar',
+      save: 'Guardar Cambios',
       create: 'Añadir al Lanzador',
       errors: {
         nameRequired: 'El nombre es obligatorio',
@@ -204,15 +242,16 @@ export const translations: Record<Language, Translations> = {
     },
     deleteModal: {
       title: '¿Eliminar esta aplicación?',
-      message: 'Esta aplicación se eliminará de tu lanzador personal.',
+      message: 'Se eliminará la aplicación y sus credenciales de la nube.',
       cancel: 'Cancelar',
       confirm: 'Eliminar'
     },
     toasts: {
-      added: 'Añadida al lanzador',
-      updated: 'App actualizada',
-      deleted: 'App eliminada',
-      reset: 'Restablecido a las apps por defecto'
+      added: 'Guardado en Telegram Cloud',
+      updated: 'Actualizado en Telegram Cloud',
+      deleted: 'Eliminado de Telegram Cloud',
+      reset: 'Restablecido a las apps por defecto',
+      cloudSynced: 'Sincronizado con Telegram Cloud Storage'
     },
     empty: {
       title: 'No se encontraron apps',

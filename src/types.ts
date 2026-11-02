@@ -12,6 +12,9 @@ export interface WebAppItem {
   isDefault?: boolean;
   accentColor?: string;
   createdAt: number;
+  // Telegram Cloud Stored credentials
+  username?: string;
+  password?: string;
 }
 
 export interface TelegramUser {
@@ -26,4 +29,10 @@ export interface TelegramUser {
 
 export interface UserPreferences {
   language: Language;
+}
+
+export interface CloudCredentials {
+  username?: string;
+  password?: string;
+  lastSynced?: number;
 }

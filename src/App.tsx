@@ -11,7 +11,9 @@ import {
   isTelegramEnv, 
   getTelegramUser, 
   getInitDataString, 
-  triggerHaptic 
+  triggerHaptic,
+  cloudStorageGetItem,
+  cloudStorageSetItem
 } from './services/telegram';
 import { Compass, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
@@ -69,6 +71,7 @@ export default function App() {
   const handleToggleLanguage = useCallback((newLang: Language) => {
     setLanguage(newLang);
     localStorage.setItem('tma_lang', newLang);
+    cloudStorageSetItem('tma_lang', newLang).catch(() => {});
     const userId = currentUser?.id || 'guest';
     fetch('/api/user/preferences', {
       method: 'POST',
@@ -114,43 +117,64 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Load apps
+  // Load apps from Telegram Cloud Storage (with fallback to localStorage & backend)
   useEffect(() => {
     const userId = currentUser?.id || 'guest';
     const localKey = `tma_apps_${userId}`;
 
-    const cached = localStorage.getItem(localKey);
-    let initialList: WebAppItem[] = DEFAULT_APPS;
+    // 1. Check Telegram Cloud Storage first
+    cloudStorageGetItem('tma_cloud_apps').then((cloudVal) => {
+      if (cloudVal) {
+        try {
+          const parsed = JSON.parse(cloudVal);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setApps(parsed);
+            localStorage.setItem(localKey, cloudVal);
+            return;
+          }
+        } catch {}
+      }
 
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          initialList = parsed;
-        }
-      } catch {}
-    }
-    setApps(initialList);
+      // 2. Fallback to localStorage
+      const cached = localStorage.getItem(localKey);
+      let initialList: WebAppItem[] = DEFAULT_APPS;
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            initialList = parsed;
+          }
+        } catch {}
+      }
+      setApps(initialList);
 
-    fetch(`/api/apps?userId=${userId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.hasCustomApps && Array.isArray(data.apps)) {
-          setApps(data.apps);
-          localStorage.setItem(localKey, JSON.stringify(data.apps));
-        }
-      })
-      .catch(() => {});
+      // 3. Fallback sync to backend
+      fetch(`/api/apps?userId=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.hasCustomApps && Array.isArray(data.apps)) {
+            setApps(data.apps);
+            localStorage.setItem(localKey, JSON.stringify(data.apps));
+            cloudStorageSetItem('tma_cloud_apps', JSON.stringify(data.apps)).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    });
   }, [currentUser?.id]);
 
-  // Save apps list
+  // Save apps list to Telegram Cloud Storage & LocalStorage
   const handleSaveAppsList = useCallback((updatedApps: WebAppItem[]) => {
     const userId = currentUser?.id || 'guest';
     const localKey = `tma_apps_${userId}`;
+    const serialized = JSON.stringify(updatedApps);
 
     setApps(updatedApps);
-    localStorage.setItem(localKey, JSON.stringify(updatedApps));
+    localStorage.setItem(localKey, serialized);
 
+    // Save directly to Telegram Cloud Storage (persists username, password, and app list)
+    cloudStorageSetItem('tma_cloud_apps', serialized).catch(() => {});
+
+    // Sync to backend store
     fetch('/api/apps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
