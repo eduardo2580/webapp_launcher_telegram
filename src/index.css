@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --tg-theme-bg-color: #17212b;
+    --tg-theme-text-color: #f5f5f5;
+    --tg-theme-hint-color: #708499;
+    --tg-theme-link-color: #5288c1;
+    --tg-theme-button-color: #2b73bc;
+    --tg-theme-button-text-color: #ffffff;
+    --tg-theme-secondary-bg-color: #232e3c;
+    --tg-theme-header-bg-color: #17212b;
+    --tg-theme-accent-text-color: #64b5f6;
+    --tg-theme-section-bg-color: #1c2733;
+    --tg-theme-section-header-text-color: #7996b2;
+    --tg-theme-subtitle-text-color: #8292a1;
+    --tg-theme-destructive-text-color: #e53935;
+    
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* When light mode is toggled or Telegram is in light mode */
+  :root[data-theme="light"], .tg-theme-light {
+    --tg-theme-bg-color: #ffffff;
+    --tg-theme-text-color: #000000;
+    --tg-theme-hint-color: #999999;
+    --tg-theme-link-color: #2481cc;
+    --tg-theme-button-color: #2481cc;
+    --tg-theme-button-text-color: #ffffff;
+    --tg-theme-secondary-bg-color: #f4f4f5;
+    --tg-theme-header-bg-color: #ffffff;
+    --tg-theme-accent-text-color: #2481cc;
+    --tg-theme-section-bg-color: #ffffff;
+    --tg-theme-section-header-text-color: #6d7885;
+    --tg-theme-subtitle-text-color: #828282;
+    --tg-theme-destructive-text-color: #ff3b30;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(140, 160, 180, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 160, 180, 0.4);
+}
+
+/* Telegram safe area insets */
+.safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 12px);
+}
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+}

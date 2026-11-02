@@ -1,0 +1,6 @@
+{
+  "name": "Telegram Mini App Web Launcher",
+  "description": "Production-ready Telegram Mini App launcher with dashboard, embed viewer, app manager, bot webhook controller, and initData verification.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
