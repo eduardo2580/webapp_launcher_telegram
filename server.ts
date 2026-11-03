@@ -13,6 +13,9 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!BOT_TOKEN) {
+  console.warn('[Telegram Bot] TELEGRAM_BOT_TOKEN is not configured; bot commands are disabled.');
+}
 
 // Permissive CORS & Security Headers for Mobile WebViews & Emulators
 app.use((_req: Request, res: Response, next: NextFunction) => {
