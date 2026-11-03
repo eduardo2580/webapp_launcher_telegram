@@ -107,7 +107,195 @@ const CORE_APPS = [
   },
 ];
 
-let serverSyncedApps = [...CORE_APPS];
+type AppCategory = 'Social' | 'Work' | 'Tools' | 'Media' | 'Other';
+type BotLanguage = 'en' | 'es' | 'pt';
+type TelegramBotApp = {
+  id: string;
+  title: string;
+  url: string;
+  category: AppCategory;
+};
+
+const APP_CATEGORIES: AppCategory[] = ['Social', 'Work', 'Tools', 'Media', 'Other'];
+const BOT_PAGE_SIZE = 8;
+let serverSyncedApps: unknown[] = [...CORE_APPS];
+
+const BOT_COPY: Record<BotLanguage, {
+  title: string;
+  description: string;
+  page: string;
+  apps: string;
+  empty: string;
+  all: string;
+  categories: Record<AppCategory, string>;
+}> = {
+  en: {
+    title: '📱 <b>Your apps</b>',
+    description: 'Choose a category, then tap an app to open it in Telegram.',
+    page: 'Page',
+    apps: 'apps',
+    empty: 'No apps in this category.',
+    all: 'All',
+    categories: { Social: 'Social', Work: 'Work', Tools: 'Tools', Media: 'Media', Other: 'Other' },
+  },
+  es: {
+    title: '📱 <b>Tus aplicaciones</b>',
+    description: 'Elige una categoría y toca una aplicación para abrirla en Telegram.',
+    page: 'Página',
+    apps: 'aplicaciones',
+    empty: 'No hay aplicaciones en esta categoría.',
+    all: 'Todas',
+    categories: { Social: 'Social', Work: 'Trabajo', Tools: 'Herramientas', Media: 'Medios', Other: 'Otros' },
+  },
+  pt: {
+    title: '📱 <b>Seus aplicativos</b>',
+    description: 'Escolha uma categoria e toque em um aplicativo para abri-lo no Telegram.',
+    page: 'Página',
+    apps: 'aplicativos',
+    empty: 'Não há aplicativos nesta categoria.',
+    all: 'Todos',
+    categories: { Social: 'Social', Work: 'Trabalho', Tools: 'Ferramentas', Media: 'Mídia', Other: 'Outros' },
+  },
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getBotApps(): TelegramBotApp[] {
+  return serverSyncedApps.flatMap((value): TelegramBotApp[] => {
+    if (!isRecord(value)) return [];
+    const { id, title, url, category } = value;
+    if (typeof id !== 'string' || typeof title !== 'string' || typeof url !== 'string') return [];
+    if (!id || !title.trim() || title.length > 200) return [];
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return [];
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) return [];
+
+    const appCategory = APP_CATEGORIES.includes(category as AppCategory)
+      ? category as AppCategory
+      : 'Other';
+    return [{
+      id,
+      title: title.trim(),
+      url: parsedUrl.toString(),
+      category: appCategory,
+    }];
+  }).slice(0, 200);
+}
+
+function getBotLanguage(languageCode: unknown): BotLanguage {
+  if (typeof languageCode !== 'string') return 'en';
+  if (languageCode.toLowerCase().startsWith('pt')) return 'pt';
+  if (languageCode.toLowerCase().startsWith('es')) return 'es';
+  return 'en';
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] || character);
+}
+
+function renderBotAppMenu(
+  language: BotLanguage,
+  selectedCategory: AppCategory | 'All',
+  requestedPage: number,
+  allowMiniApps: boolean,
+) {
+  const copy = BOT_COPY[language];
+  const apps = getBotApps();
+  const categories: Array<AppCategory | 'All'> = [
+    'All',
+    ...APP_CATEGORIES.filter((category) => apps.some((app) => app.category === category)),
+  ];
+  const validCategory = categories.includes(selectedCategory) ? selectedCategory : 'All';
+  const filteredApps = validCategory === 'All'
+    ? apps
+    : apps.filter((app) => app.category === validCategory);
+  const pageCount = Math.max(1, Math.ceil(filteredApps.length / BOT_PAGE_SIZE));
+  const page = Math.max(0, Math.min(Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 0, pageCount - 1));
+  const visibleApps = filteredApps.slice(page * BOT_PAGE_SIZE, (page + 1) * BOT_PAGE_SIZE);
+  const selectedLabel = validCategory === 'All' ? copy.all : copy.categories[validCategory];
+  const text = [
+    copy.title,
+    copy.description,
+    '',
+    `<b>${escapeHtml(selectedLabel)}</b> · ${filteredApps.length} ${copy.apps} · ${copy.page} ${page + 1}/${pageCount}`,
+    ...(visibleApps.length ? [] : ['', copy.empty]),
+  ].join('\n');
+
+  const keyboard: Array<Array<Record<string, unknown>>> = [];
+  for (let index = 0; index < categories.length; index += 3) {
+    keyboard.push(categories.slice(index, index + 3).map((category) => ({
+      text: category === 'All' ? copy.all : copy.categories[category],
+      callback_data: category === 'All' ? 'launcher:category:All' : `launcher:category:${category}`,
+    })));
+  }
+  for (let index = 0; index < visibleApps.length; index += 2) {
+    keyboard.push(visibleApps.slice(index, index + 2).map((app) => ({
+      text: `🌐 ${Array.from(app.title).slice(0, 58).join('')}`,
+      ...(allowMiniApps && app.url.startsWith('https:')
+        ? { web_app: { url: app.url } }
+        : { url: app.url }),
+    })));
+  }
+  if (pageCount > 1) {
+    keyboard.push([
+      ...(page > 0
+        ? [{ text: '◀️', callback_data: `launcher:page:${validCategory}:${page - 1}` }]
+        : []),
+      { text: `${page + 1}/${pageCount}`, callback_data: `launcher:page:${validCategory}:${page}` },
+      ...(page + 1 < pageCount
+        ? [{ text: '▶️', callback_data: `launcher:page:${validCategory}:${page + 1}` }]
+        : []),
+    ]);
+  }
+
+  return { text, reply_markup: { inline_keyboard: keyboard } };
+}
+
+function parseBotMenuCallback(data: unknown): { category: AppCategory | 'All'; page: number } | null {
+  if (typeof data !== 'string' || data.length > 64) return null;
+  const categoryMatch = /^launcher:category:(All|Social|Work|Tools|Media|Other)$/.exec(data);
+  if (categoryMatch) return { category: categoryMatch[1] as AppCategory | 'All', page: 0 };
+
+  const pageMatch = /^launcher:page:(All|Social|Work|Tools|Media|Other):(\d{1,4})$/.exec(data);
+  if (pageMatch) return { category: pageMatch[1] as AppCategory | 'All', page: Number(pageMatch[2]) };
+  return null;
+}
+
+async function callTelegramApi(method: string, payload: Record<string, unknown>): Promise<void> {
+  let response: Awaited<ReturnType<typeof fetch>>;
+  try {
+    response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error(`Telegram ${method} network request failed.`);
+  }
+
+  let result: { ok?: boolean; description?: string };
+  try {
+    result = await response.json() as { ok?: boolean; description?: string };
+  } catch {
+    throw new Error(`Telegram ${method} returned an invalid response (${response.status}).`);
+  }
+  if (!response.ok || !result.ok) {
+    throw new Error(`Telegram ${method} failed (${response.status}): ${result.description || 'unknown error'}`);
+  }
+}
 
 // Core app metadata endpoint for Service Worker background sync & offline caching
 app.get('/api/apps', (_req: Request, res: Response) => {
@@ -136,88 +324,62 @@ app.post('/api/apps/sync', (req: Request, res: Response) => {
 });
 
 /**
- * Telegram Bot Webhook endpoint
- * Handles /start and /launcher commands with multilingual buttons
+ * Telegram Bot Webhook endpoint.
+ * The bot menu is rendered and navigated entirely through Telegram messages and inline buttons.
  */
 app.post('/api/telegram/webhook', async (req: Request, res: Response) => {
   const update = req.body;
   res.status(200).send('OK');
 
-  if (!BOT_TOKEN || !update?.message) return;
-
-  const chatId = update.message.chat?.id;
-  const text = (update.message.text || '').trim();
-  const host = req.get('host') || 'localhost:3000';
-  const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
-  const appUrl = process.env.APP_URL || `${protocol}://${host}`;
+  if (!BOT_TOKEN) return;
 
   try {
-    if (text === '/start') {
-      const payload = {
-        chat_id: chatId,
-        text:
-          '👋 *Welcome! / Bem-vindo! / ¡Bienvenido!*\n\n' +
-          '*How to open the app / Como abrir o aplicativo / Cómo abrir la aplicación:*\n' +
-          '1. Choose your language below.\n' +
-          '2. Tap the button to open the app inside Telegram.\n' +
-          '3. Add your favorite websites using the + button.\n\n' +
-          '1. Escolha seu idioma abaixo.\n' +
-          '2. Toque no botão para abrir o aplicativo no Telegram.\n' +
-          '3. Adicione seus sites favoritos pelo botão +.\n\n' +
-          '1. Elige tu idioma abajo.\n' +
-          '2. Pulsa el botón para abrir la aplicación en Telegram.\n' +
-          '3. Añade tus sitios favoritos con el botón +.',
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: '🚀 Launcher (EN)',
-                web_app: { url: `${appUrl}?lang=en` },
-              },
-              {
-                text: '🚀 Lanzador (PT)',
-                web_app: { url: `${appUrl}?lang=pt` },
-              },
-              {
-                text: '🚀 Lanzador (ES)',
-                web_app: { url: `${appUrl}?lang=es` },
-              },
-            ],
-          ],
-        },
-      };
+    const callback = update?.callback_query;
+    if (callback) {
+      if (!callback.id) return;
+      await callTelegramApi('answerCallbackQuery', { callback_query_id: callback.id });
 
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } else if (text === '/launcher') {
-      const payload = {
-        chat_id: chatId,
-        text: '⚡ *Open Web App Launcher*',
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: '🚀 Open Web App Launcher',
-                web_app: { url: appUrl },
-              },
-            ],
-          ],
-        },
-      };
+      const state = parseBotMenuCallback(callback.data);
+      const chatId = callback.message?.chat?.id;
+      const messageId = callback.message?.message_id;
+      if (!state || chatId === undefined || messageId === undefined) return;
 
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const menu = renderBotAppMenu(
+        getBotLanguage(callback.from?.language_code),
+        state.category,
+        state.page,
+        callback.message?.chat?.type === 'private',
+      );
+      await callTelegramApi('editMessageText', {
+        chat_id: chatId,
+        message_id: messageId,
+        text: menu.text,
+        parse_mode: 'HTML',
+        reply_markup: menu.reply_markup,
       });
+      return;
     }
-  } catch (err) {
-    console.warn('Telegram webhook warning');
+
+    const message = update?.message;
+    if (!message?.chat?.id || typeof message.text !== 'string') return;
+    const command = message.text.trim().split(/\s+/, 1)[0].split('@', 1)[0];
+    if (command !== '/start' && command !== '/launcher') return;
+
+    const menu = renderBotAppMenu(
+      getBotLanguage(message.from?.language_code),
+      'All',
+      0,
+      message.chat.type === 'private',
+    );
+    await callTelegramApi('sendMessage', {
+      chat_id: message.chat.id,
+      text: menu.text,
+      parse_mode: 'HTML',
+      reply_markup: menu.reply_markup,
+    });
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Unknown Telegram webhook error.';
+    console.warn('[Telegram webhook] Failed to update the app menu:', details);
   }
 });
 
