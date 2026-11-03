@@ -63,10 +63,7 @@ export default function App() {
 
       // Load language preference
       const savedLang = await cloudStorageGetItem(STORAGE_KEY_LANG);
-      const requestedLang = new URLSearchParams(window.location.search).get('lang');
-      if (requestedLang === 'en' || requestedLang === 'es' || requestedLang === 'pt') {
-        setLang(requestedLang);
-      } else if (savedLang === 'en' || savedLang === 'es' || savedLang === 'pt') {
+      if (savedLang === 'en' || savedLang === 'es' || savedLang === 'pt') {
         setLang(savedLang);
       } else {
         setLang(initialLang);
@@ -180,9 +177,6 @@ export default function App() {
     const nextLang: Language = cycleMap[lang] || 'en';
     hapticImpact('light');
     setLang(nextLang);
-    const url = new URL(window.location.href);
-    url.searchParams.set('lang', nextLang);
-    window.history.replaceState(window.history.state, '', url.toString());
     try {
       await cloudStorageSetItem(STORAGE_KEY_LANG, nextLang);
     } catch {
