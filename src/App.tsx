@@ -71,9 +71,7 @@ export default function App() {
 
       // Load apps using progressive Service Worker cache & background sync strategy
       const result = await loadAppMetadataList();
-      if (result.apps && result.apps.length > 0) {
-        setApps(result.apps);
-      }
+      setApps(result.apps);
 
       const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
       setSyncState({
@@ -147,12 +145,12 @@ export default function App() {
     setApps(newApps);
     setSyncState((prev) => ({ ...prev, status: 'syncing' }));
     try {
-      await persistAppMetadataWithSync(newApps);
+      const cloudSynced = await persistAppMetadataWithSync(newApps);
       const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
       setSyncState({
         status: !online
           ? 'offline'
-          : isCloudStorageAvailable()
+          : cloudSynced
           ? 'synced'
           : 'cached',
         isOnline: online,
@@ -179,8 +177,8 @@ export default function App() {
     setLang(nextLang);
     try {
       await cloudStorageSetItem(STORAGE_KEY_LANG, nextLang);
-    } catch {
-      // Ignored
+    } catch (error) {
+      console.warn('Failed to save language preference:', error);
     }
   };
 
