@@ -4,7 +4,7 @@
  * for Core App Metadata and offline resilience in Telegram WebViews
  */
 
-const STATIC_CACHE_NAME = 'tma-launcher-static-v2';
+const STATIC_CACHE_NAME = 'tma-launcher-static-v3';
 const METADATA_CACHE_NAME = 'tma-metadata-v2';
 const SYNC_TAG_METADATA = 'sync-app-metadata';
 

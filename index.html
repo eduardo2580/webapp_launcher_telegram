@@ -25,10 +25,29 @@
     <!-- PWA Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch((err) => {
-            console.warn('SW registration failed:', err);
+        const hadController = Boolean(navigator.serviceWorker.controller);
+        let reloadedForUpdate = false;
+
+        if (hadController) {
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (reloadedForUpdate) return;
+            reloadedForUpdate = true;
+            window.location.reload();
           });
+        }
+
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('/sw.js', { updateViaCache: 'none' })
+            .then((registration) => registration.update())
+            .catch((err) => console.warn('SW registration/update failed:', err));
+        });
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState !== 'visible') return;
+          navigator.serviceWorker.ready
+            .then((registration) => registration.update())
+            .catch((err) => console.warn('SW update check failed:', err));
         });
       }
     </script>

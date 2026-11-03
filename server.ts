@@ -234,10 +234,19 @@ async function startServer() {
     // Serve static files from dist
     const distPath = path.resolve(__dirname, 'dist');
     
+    app.use((req, res, next) => {
+      if (req.path === '/' || req.path === '/index.html') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+      next();
+    });
+
     // Explicit headers for Service Worker
     app.use('/sw.js', (_req, res, next) => {
       res.setHeader('Service-Worker-Allowed', '/');
-      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       next();
     });
 
