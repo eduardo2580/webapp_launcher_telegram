@@ -140,25 +140,10 @@ self.addEventListener('sync', (event) => {
  */
 async function executeBackgroundMetadataSync() {
   try {
-    const metadataCache = await caches.open(METADATA_CACHE_NAME);
-    const cachedResponse = await metadataCache.match('/api/apps');
-    if (cachedResponse) {
-      const cachedData = await cachedResponse.clone().json();
-      if (Array.isArray(cachedData.apps)) {
-        const syncResponse = await fetch('/api/apps/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apps: cachedData.apps, clientTimestamp: Date.now() }),
-        });
-        if (!syncResponse.ok) {
-          throw new Error(`Metadata sync failed (${syncResponse.status}).`);
-        }
-      }
-    }
-
     const res = await fetch('/api/apps', { cache: 'no-cache' });
     if (res.ok) {
       const data = await res.clone().json();
+      const metadataCache = await caches.open(METADATA_CACHE_NAME);
       await metadataCache.put('/api/apps', res);
 
       // Broadcast update to open launcher views
@@ -310,7 +295,7 @@ self.addEventListener('message', (event) => {
           status: 'ok',
           source: 'sw-client-sync',
           syncedAt: Date.now(),
-          apps: Array.isArray(data.apps) ? data.apps : CORE_FALLBACK_APPS,
+          apps: data.apps || CORE_FALLBACK_APPS,
         };
         const response = new Response(JSON.stringify(payload), {
           status: 200,

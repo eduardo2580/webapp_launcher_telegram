@@ -28,11 +28,6 @@ import {
 } from './services/metadataSync';
 
 const STORAGE_KEY_LANG = 'tma_lang';
-const getQueryLanguage = (): Language | null => {
-  if (typeof window === 'undefined') return null;
-  const value = new URLSearchParams(window.location.search).get('lang');
-  return value === 'en' || value === 'es' || value === 'pt' ? value : null;
-};
 const CATEGORY_TRANSLATION_KEYS: Record<WebAppItem['category'], keyof typeof translations.en> = {
   Social: 'categorySocial',
   Work: 'categoryWork',
@@ -67,16 +62,8 @@ export default function App() {
       setSyncState((prev) => ({ ...prev, status: 'syncing' }));
 
       // Load language preference
-      const requestedLang = getQueryLanguage();
       const savedLang = await cloudStorageGetItem(STORAGE_KEY_LANG);
-      if (requestedLang) {
-        setLang(requestedLang);
-        try {
-          await cloudStorageSetItem(STORAGE_KEY_LANG, requestedLang);
-        } catch (error) {
-          console.warn('Failed to sync requested language preference:', error);
-        }
-      } else if (savedLang === 'en' || savedLang === 'es' || savedLang === 'pt') {
+      if (savedLang === 'en' || savedLang === 'es' || savedLang === 'pt') {
         setLang(savedLang);
       } else {
         setLang(initialLang);
@@ -84,7 +71,9 @@ export default function App() {
 
       // Load apps using progressive Service Worker cache & background sync strategy
       const result = await loadAppMetadataList();
-      setApps(result.apps);
+      if (result.apps && result.apps.length > 0) {
+        setApps(result.apps);
+      }
 
       const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
       setSyncState({
@@ -158,12 +147,12 @@ export default function App() {
     setApps(newApps);
     setSyncState((prev) => ({ ...prev, status: 'syncing' }));
     try {
-      const cloudSynced = await persistAppMetadataWithSync(newApps);
+      await persistAppMetadataWithSync(newApps);
       const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
       setSyncState({
         status: !online
           ? 'offline'
-          : cloudSynced
+          : isCloudStorageAvailable()
           ? 'synced'
           : 'cached',
         isOnline: online,
@@ -190,8 +179,8 @@ export default function App() {
     setLang(nextLang);
     try {
       await cloudStorageSetItem(STORAGE_KEY_LANG, nextLang);
-    } catch (error) {
-      console.warn('Failed to save language preference:', error);
+    } catch {
+      // Ignored
     }
   };
 

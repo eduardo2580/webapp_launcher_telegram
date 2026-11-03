@@ -65,7 +65,7 @@ export async function initMetadataSync(callbacks: MetadataSyncCallbacks) {
     if (!data) return;
 
     if (data.type === 'METADATA_UPDATED' || data.type === 'BACKGROUND_SYNC_COMPLETE') {
-      if (Array.isArray(data.apps) && activeCallbacks.onMetadataUpdated) {
+      if (Array.isArray(data.apps) && data.apps.length > 0 && activeCallbacks.onMetadataUpdated) {
         activeCallbacks.onMetadataUpdated(data.apps, data.source || 'service-worker');
       }
 
@@ -106,7 +106,7 @@ export async function initMetadataSync(callbacks: MetadataSyncCallbacks) {
  */
 export async function triggerBackgroundSync(appsToSync?: WebAppItem[]): Promise<boolean> {
   // If we have an active Service Worker, inform it of current metadata
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+  if (navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({
       type: 'CACHE_METADATA',
       apps: appsToSync,
@@ -134,15 +134,28 @@ export async function triggerBackgroundSync(appsToSync?: WebAppItem[]): Promise<
     }
   }
 
+  // Attempt Native Background Sync API
+  if (isBackgroundSyncSupported()) {
+    try {
+      const reg = swRegistration || (await navigator.serviceWorker.ready);
+      if (reg && 'sync' in reg) {
+        await (reg as unknown as { sync: { register: (tag: string) => Promise<void> } }).sync.register(SYNC_TAG_METADATA);
+        return true;
+      }
+    } catch (e) {
+      console.warn('[SyncManager] Native sync register failed, using network fallback:', e);
+    }
+  }
+
+  // Resilient fallback for iOS / non-sync browsers
   if (navigator.onLine) {
     try {
-      if (appsToSync !== undefined) {
-        const response = await fetch('/api/apps/sync', {
+      if (appsToSync && appsToSync.length > 0) {
+        await fetch('/api/apps/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ apps: appsToSync, clientTimestamp: Date.now() }),
         });
-        if (!response.ok) throw new Error(`Metadata sync failed (${response.status}).`);
       } else {
         const res = await fetch(METADATA_API_URL, { cache: 'no-cache' });
         if (res.ok) {
@@ -153,21 +166,9 @@ export async function triggerBackgroundSync(appsToSync?: WebAppItem[]): Promise<
         }
       }
       return true;
-    } catch (err) {
-      console.warn('[MetadataSync] Online sync deferred:', err);
-    }
-  }
-
-  // Retry when connectivity returns if the immediate sync was unavailable.
-  if (isBackgroundSyncSupported()) {
-    try {
-      const reg = swRegistration || (await navigator.serviceWorker.ready);
-      if (reg && 'sync' in reg) {
-        await (reg as unknown as { sync: { register: (tag: string) => Promise<void> } }).sync.register(SYNC_TAG_METADATA);
-        return true;
-      }
-    } catch (err) {
-      console.warn('[SyncManager] Background sync registration failed:', err);
+    } catch {
+      // Offline fallback: handled by caches
+      return false;
     }
   }
 
@@ -178,7 +179,7 @@ function migrateDefaultApps(apps: WebAppItem[]): WebAppItem[] {
   const migratedApps = apps.filter((app) => app.id !== 'telegram');
   const youtube = DEFAULT_APPS.find((app) => app.id === 'youtube');
 
-  if (apps.some((app) => app.id === 'telegram') && youtube && !migratedApps.some((app) => app.id === youtube.id)) {
+  if (youtube && !migratedApps.some((app) => app.id === youtube.id)) {
     const telegramIndex = apps.findIndex((app) => app.id === 'telegram');
     const insertIndex = telegramIndex < 0 ? migratedApps.length : telegramIndex;
     migratedApps.splice(insertIndex, 0, youtube);
@@ -216,8 +217,8 @@ export async function loadAppMetadataList(): Promise<{
     const cloudAppsJson = await cloudStorageGetItem(STORAGE_KEY_APPS);
     if (cloudAppsJson) {
       const parsed = JSON.parse(cloudAppsJson);
-      if (Array.isArray(parsed)) {
-        const apps = parsed.length > 0 ? migrateDefaultApps(parsed) : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const apps = migrateDefaultApps(parsed);
         // Cache this fresh cloud list into Service Worker cache in background
         triggerBackgroundSync(apps);
         return { apps, source: 'cloud' };
@@ -232,8 +233,8 @@ export async function loadAppMetadataList(): Promise<{
     const res = await fetch(METADATA_API_URL);
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.apps)) {
-        return { apps: data.apps.length > 0 ? migrateDefaultApps(data.apps) : [], source: 'sw-cache' };
+      if (Array.isArray(data.apps) && data.apps.length > 0) {
+        return { apps: migrateDefaultApps(data.apps), source: 'sw-cache' };
       }
     }
   } catch (err) {
@@ -247,8 +248,8 @@ export async function loadAppMetadataList(): Promise<{
       const cached = await cache.match(METADATA_API_URL);
       if (cached) {
         const data = await cached.json();
-        if (Array.isArray(data.apps)) {
-          return { apps: data.apps.length > 0 ? migrateDefaultApps(data.apps) : [], source: 'sw-cache' };
+        if (Array.isArray(data.apps) && data.apps.length > 0) {
+          return { apps: migrateDefaultApps(data.apps), source: 'sw-cache' };
         }
       }
     } catch (e) {
@@ -261,8 +262,8 @@ export async function loadAppMetadataList(): Promise<{
     const localJson = localStorage.getItem(STORAGE_KEY_APPS);
     if (localJson) {
       const parsed = JSON.parse(localJson);
-      if (Array.isArray(parsed)) {
-        const apps = parsed.length > 0 ? migrateDefaultApps(parsed) : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const apps = migrateDefaultApps(parsed);
         triggerBackgroundSync(apps);
         return { apps, source: 'local' };
       }
