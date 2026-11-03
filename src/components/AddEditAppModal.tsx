@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Lock, Globe, Tag, Image, Check } from 'lucide-react';
+import { X, Lock, Globe, Tag, Image, Check } from './Icons';
 import { WebAppItem, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
 import { hapticImpact, hapticNotification } from '../services/telegram';

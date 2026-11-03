@@ -47,6 +47,11 @@ export const translations = {
     resetDefaults: 'Reset Defaults',
     confirmReset: 'Reset all apps to original presets?',
     close: 'Close',
+    back: 'Back',
+    reload: 'Reload',
+    copy: 'Copy',
+    login: 'Login',
+    language: 'Language',
   },
   es: {
     appTitle: 'Lanzador de Web Apps',
@@ -94,6 +99,11 @@ export const translations = {
     resetDefaults: 'Restablecer',
     confirmReset: '¿Restablecer aplicaciones a los valores iniciales?',
     close: 'Cerrar',
+    back: 'Volver',
+    reload: 'Recargar',
+    copy: 'Copiar',
+    login: 'Acceso',
+    language: 'Idioma',
   },
 } as const;
 

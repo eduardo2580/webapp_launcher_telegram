@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, Trash2, Key, Edit3 } from 'lucide-react';
+import { ExternalLink, Trash2, Key, Edit3 } from './Icons';
 import { WebAppItem, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
 import { hapticImpact } from '../services/telegram';
