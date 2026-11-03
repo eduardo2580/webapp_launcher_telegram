@@ -6,7 +6,8 @@ import {
   setTelegramBackButton,
   hapticImpact,
   hapticNotification,
-  getTelegramWebApp,
+  launchExternalApp,
+  handleExternalLinkClick,
   forceMemoryGarbageCollection,
 } from '../services/telegram';
 
@@ -23,6 +24,10 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
   const [copiedField, setCopiedField] = useState<'user' | 'pass' | null>(null);
   const [hasFrameError, setHasFrameError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const iframeLinkListenerRef = useRef<{
+    document: Document;
+    listener: (event: MouseEvent) => void;
+  } | null>(null);
 
   // Identify if URL is localhost or known frame-restricted site (Instagram, Facebook, LinkedIn, X)
   const isLocalhost = currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
@@ -80,6 +85,12 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
       console.warn('Iframe cleanup notice:', err);
     } finally {
       iframeRef.current = null;
+      iframeLinkListenerRef.current?.document.removeEventListener(
+        'click',
+        iframeLinkListenerRef.current.listener,
+        true
+      );
+      iframeLinkListenerRef.current = null;
       forceMemoryGarbageCollection();
     }
   }, []);
@@ -106,6 +117,21 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
     setHasFrameError(false);
   };
 
+  const handleIframeLoad = () => {
+    const iframeDocument = iframeRef.current?.contentDocument;
+    if (!iframeDocument || iframeLinkListenerRef.current?.document === iframeDocument) return;
+
+    iframeLinkListenerRef.current?.document.removeEventListener(
+      'click',
+      iframeLinkListenerRef.current.listener,
+      true
+    );
+    const listener = (event: MouseEvent) =>
+      handleExternalLinkClick(event, iframeDocument.documentElement);
+    iframeDocument.addEventListener('click', listener, true);
+    iframeLinkListenerRef.current = { document: iframeDocument, listener };
+  };
+
   const handleCopy = async (text: string, field: 'user' | 'pass') => {
     try {
       await navigator.clipboard.writeText(text);
@@ -121,17 +147,7 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
   // This bypasses X-Frame-Options and keeps logins and cookies active without leaving Telegram
   const handleOpenInTelegramBrowser = () => {
     hapticImpact('medium');
-    const tg = getTelegramWebApp();
-    if (tg && typeof tg.openLink === 'function') {
-      try {
-        tg.openLink(currentUrl, { try_instant_view: false });
-        return;
-      } catch (err) {
-        console.warn('Telegram openLink error:', err);
-      }
-    }
-    // Web fallback if outside Telegram
-    window.open(currentUrl, '_blank', 'noopener,noreferrer');
+    launchExternalApp(currentUrl);
   };
 
   // 1-Click fix for Android emulator connection refused
@@ -188,7 +204,7 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
             title={getTranslation(lang, 'openInTgBrowser')}
           >
             <Smartphone className="w-3.5 h-3.5" />
-            <span>Telegram In-App</span>
+            <span>Navegador do Telegram</span>
           </button>
 
           {hasCredentials && (
@@ -335,7 +351,8 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
           title={app.title}
           className="w-full h-full border-0 bg-white"
           allow="camera; microphone; geolocation; clipboard-read; clipboard-write; fullscreen; autoplay; encrypted-media"
-          sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation-by-user-activation"
+          sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts"
+          onLoad={handleIframeLoad}
           onError={() => setHasFrameError(true)}
         />
 

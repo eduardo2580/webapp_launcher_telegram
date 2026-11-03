@@ -42,6 +42,79 @@ app.get("/api/network-info", (req, res) => {
     }
   });
 });
+var CORE_APPS = [
+  {
+    id: "facebook",
+    title: "Facebook",
+    url: "https://m.facebook.com",
+    icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/facebook.png",
+    category: "Social",
+    isCustom: false
+  },
+  {
+    id: "instagram",
+    title: "Instagram",
+    url: "https://www.instagram.com",
+    icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/instagram.png",
+    category: "Social",
+    isCustom: false
+  },
+  {
+    id: "linkedin",
+    title: "LinkedIn",
+    url: "https://www.linkedin.com",
+    icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/linkedin.png",
+    category: "Social",
+    isCustom: false
+  },
+  {
+    id: "wikipedia",
+    title: "Wikipedia",
+    url: "https://m.wikipedia.org",
+    icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/wikipedia.png",
+    category: "Tools",
+    isCustom: false
+  },
+  {
+    id: "youtube",
+    title: "YouTube",
+    url: "https://www.youtube.com",
+    icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/youtube.png",
+    category: "Media",
+    isCustom: false
+  },
+  {
+    id: "x",
+    title: "X / Twitter",
+    url: "https://mobile.x.com",
+    icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/x.png",
+    category: "Social",
+    isCustom: false
+  }
+];
+var serverSyncedApps = [...CORE_APPS];
+app.get("/api/apps", (_req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=86400");
+  res.status(200).json({
+    status: "ok",
+    version: "1.2.0",
+    syncedAt: Date.now(),
+    source: "server",
+    apps: serverSyncedApps
+  });
+});
+app.post("/api/apps/sync", (req, res) => {
+  const { apps, clientTimestamp } = req.body || {};
+  if (Array.isArray(apps) && apps.length > 0) {
+    serverSyncedApps = apps;
+  }
+  res.status(200).json({
+    status: "ok",
+    syncedAt: Date.now(),
+    clientTimestamp: clientTimestamp || null,
+    count: serverSyncedApps.length
+  });
+});
 app.post("/api/telegram/webhook", async (req, res) => {
   const update = req.body;
   res.status(200).send("OK");
@@ -55,7 +128,7 @@ app.post("/api/telegram/webhook", async (req, res) => {
     if (text === "/start") {
       const payload = {
         chat_id: chatId,
-        text: "\u{1F44B} *Welcome to Web App Launcher / Bem-vindo / Bienvenido*\n\nChoose your preferred language / Escolha seu idioma:\n\n\u{1F1FA}\u{1F1F8} English: Ultra-lightweight launcher with Telegram Cloud storage & PWA.\n\u{1F1E7}\u{1F1F7} Portugu\xEAs: Lanzador ultraleve com Telegram Cloud e PWA.\n\u{1F1EA}\u{1F1F8} Espa\xF1ol: Lanzador ultraligero con almacenamiento en Telegram Cloud y PWA.",
+        text: "\u{1F44B} *Welcome! / Bem-vindo! / \xA1Bienvenido!*\n\n*How to open the app / Como abrir o aplicativo / C\xF3mo abrir la aplicaci\xF3n:*\n1. Choose your language below.\n2. Tap the button to open the app inside Telegram.\n3. Add your favorite websites using the + button.\n\n1. Escolha seu idioma abaixo.\n2. Toque no bot\xE3o para abrir o aplicativo no Telegram.\n3. Adicione seus sites favoritos pelo bot\xE3o +.\n\n1. Elige tu idioma abajo.\n2. Pulsa el bot\xF3n para abrir la aplicaci\xF3n en Telegram.\n3. A\xF1ade tus sitios favoritos con el bot\xF3n +.",
         parse_mode: "Markdown",
         reply_markup: {
           inline_keyboard: [

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Sparkles, Globe, RotateCcw, Plus, Wrench } from './components/Icons';
+import { Search, Sparkles, Globe, RotateCcw, Plus } from './components/Icons';
 import { WebAppItem, Language, TelegramUser, CloudStorageSyncState } from './types';
 import { DEFAULT_APPS } from './data/defaultApps';
 import { translations, getTranslation } from './i18n/translations';
@@ -13,11 +13,11 @@ import {
   hapticNotification,
   setTelegramBackButton,
   forceMemoryGarbageCollection,
+  handleExternalLinkClick,
 } from './services/telegram';
 import { AppCard } from './components/AppCard';
 import { AddEditAppModal } from './components/AddEditAppModal';
 import { InAppViewer } from './components/InAppViewer';
-import { DiagnosticsModal } from './components/DiagnosticsModal';
 
 import {
   initMetadataSync,
@@ -28,6 +28,13 @@ import {
 } from './services/metadataSync';
 
 const STORAGE_KEY_LANG = 'tma_lang';
+const CATEGORY_TRANSLATION_KEYS: Record<WebAppItem['category'], keyof typeof translations.en> = {
+  Social: 'categorySocial',
+  Work: 'categoryWork',
+  Tools: 'categoryTools',
+  Media: 'categoryMedia',
+  Other: 'categoryOther',
+};
 
 export default function App() {
   const [lang, setLang] = useState<Language>('pt');
@@ -39,12 +46,15 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingApp, setEditingApp] = useState<WebAppItem | null>(null);
-  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [syncState, setSyncState] = useState<CloudStorageSyncState>({
     status: 'syncing',
     isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
     hasBackgroundSync: isBackgroundSyncSupported(),
   });
+
+  useEffect(() => {
+    document.documentElement.lang = lang === 'pt' ? 'pt-BR' : lang;
+  }, [lang]);
 
   // Load persisted state from Telegram Cloud, Service Worker Cache, or LocalStorage
   const loadCloudData = useCallback(async (initialLang: Language) => {
@@ -122,6 +132,15 @@ export default function App() {
 
     loadCloudData(initialLang);
   }, [loadCloudData]);
+
+  useEffect(() => {
+    const root = document.getElementById('root');
+    if (!root) return;
+
+    const handleClick = (event: MouseEvent) => handleExternalLinkClick(event, root);
+    root.addEventListener('click', handleClick, true);
+    return () => root.removeEventListener('click', handleClick, true);
+  }, []);
 
   // Save apps whenever modified & trigger Service Worker Background Sync
   const persistApps = useCallback(async (newApps: WebAppItem[]) => {
@@ -237,7 +256,7 @@ export default function App() {
     });
   }, [apps, searchQuery, selectedCategory]);
 
-  const categories = ['All', 'Social', 'Work', 'Tools', 'Media', 'Other'];
+  const categories: Array<WebAppItem['category'] | 'All'> = ['All', 'Social', 'Work', 'Tools', 'Media', 'Other'];
 
   return (
     <div className="min-h-screen bg-[#17212b] text-white flex flex-col font-sans select-none">
@@ -254,9 +273,9 @@ export default function App() {
       {/* Main Launcher View (when no app is active, key forces re-render/reclaimed memory) */}
       <main key={dashboardKey} className="flex-1 max-w-4xl w-full mx-auto px-3.5 py-3.5 pb-10 flex flex-col">
         {/* Search & Actions Bar (Image 3 bar + Image 2 buttons on the right) */}
-        <div className="flex items-center gap-2 mb-3.5">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 mb-3.5 sm:gap-2">
           {/* Search Bar - Flex 1 */}
-          <div className="relative flex-1 min-w-0">
+          <div className="relative min-w-0">
             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
@@ -270,7 +289,7 @@ export default function App() {
           {/* Language Toggle Button: [🌐 EN/PT/ES] */}
           <button
             onClick={handleLanguageToggle}
-            className="h-10 px-3 rounded-xl bg-[#242f3d] border border-white/10 hover:bg-[#2b3747] text-xs font-semibold text-white flex items-center gap-1.5 transition active:scale-95 shrink-0"
+            className="h-10 px-2 sm:px-3 rounded-xl bg-[#242f3d] border border-white/10 hover:bg-[#2b3747] text-xs font-semibold text-white flex items-center gap-1.5 transition active:scale-95 shrink-0"
             title={getTranslation(lang, 'language')}
           >
             <Globe className="w-4 h-4 text-[#64b5f6]" />
@@ -293,11 +312,11 @@ export default function App() {
               setEditingApp(null);
               setIsModalOpen(true);
             }}
-            className="h-10 px-3.5 rounded-xl bg-[#2481cc] hover:bg-[#1d6fae] text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-md shadow-[#2481cc]/20"
+            className="h-10 px-2 sm:px-3.5 rounded-xl bg-[#2481cc] hover:bg-[#1d6fae] text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition active:scale-95 shrink-0 shadow-md shadow-[#2481cc]/20"
             title={getTranslation(lang, 'addApp')}
           >
             <Plus className="w-4 h-4" />
-            <span className="whitespace-nowrap">{getTranslation(lang, 'addApp')}</span>
+            <span className="hidden whitespace-nowrap sm:inline">{getTranslation(lang, 'addApp')}</span>
           </button>
         </div>
 
@@ -323,7 +342,7 @@ export default function App() {
             const label =
               cat === 'All'
                 ? getTranslation(lang, 'allCategories')
-                : translations[lang][`category${cat as 'Social'}` as keyof typeof translations.en] || cat;
+                : translations[lang][CATEGORY_TRANSLATION_KEYS[cat]] || cat;
             const isActive = selectedCategory === cat;
             return (
               <button
@@ -343,18 +362,6 @@ export default function App() {
             );
           })}
 
-          {/* Quick Diagnostics pill */}
-          <button
-            onClick={() => {
-              hapticImpact('light');
-              setIsDiagnosticsOpen(true);
-            }}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition bg-white/5 hover:bg-white/10 text-gray-300 hover:text-[#64b5f6] flex items-center gap-1 shrink-0 ml-auto"
-            title="Diagnóstico & Mobile WebView Config"
-          >
-            <Wrench className="w-3.5 h-3.5 text-[#64b5f6]" />
-            <span>{getTranslation(lang, 'diagnostics')}</span>
-          </button>
         </div>
 
         {/* Apps Grid */}
@@ -384,22 +391,15 @@ export default function App() {
         )}
 
         {/* Footer: RAM, Background Sync, and In-Telegram PWA Status */}
-        <div className="mt-6 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-gray-500">
-          <span className="truncate max-w-[200px]">{getTranslation(lang, 'tagline')}</span>
+        <div className="mt-6 pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-[11px] text-gray-500">
+          <span className="min-w-0 flex-1 truncate">© 2026 All rights reserved.</span>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => {
-                hapticImpact('light');
-                setIsDiagnosticsOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-md font-mono text-[10px] transition cursor-pointer"
-              title="Abrir Diagnóstico Mobile & Service Worker"
-            >
+            <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-md font-mono text-[10px]">
               <span className={`w-1.5 h-1.5 rounded-full ${syncState.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-              <span>{syncState.isOnline ? 'In-Telegram PWA' : 'PWA Offline'}</span>
+              <span>{syncState.isOnline ? 'PWA no Telegram' : 'PWA sem conexão'}</span>
               <span className="text-gray-400">&bull;</span>
-              <span className="text-[#64b5f6]">{syncState.status === 'synced' ? 'TG Cloud' : 'SW Cached'}</span>
-            </button>
+              <span className="text-[#64b5f6]">{syncState.status === 'synced' ? 'Telegram Cloud' : 'Em cache'}</span>
+            </div>
           </div>
         </div>
       </main>
@@ -416,16 +416,6 @@ export default function App() {
         }}
       />
 
-      {/* Mobile & WebView Diagnostics Modal */}
-      <DiagnosticsModal
-        isOpen={isDiagnosticsOpen}
-        lang={lang}
-        syncState={syncState}
-        apps={apps}
-        onTriggerSync={() => triggerBackgroundSync(apps)}
-        onClose={() => setIsDiagnosticsOpen(false)}
-      />
     </div>
   );
 }
-

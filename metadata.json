@@ -1,6 +1,6 @@
 {
-  "name": "Telegram Web App Launcher PWA",
-  "description": "Ultra-lightweight Telegram Mini App and PWA Launcher with Telegram Cloud Storage sync and in-app embed viewer.",
+  "name": "Inicializador de aplicativos web do Telegram",
+  "description": "Inicializador leve de Mini Apps do Telegram e PWA, com sincronização pelo Telegram Cloud e visualizador integrado.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

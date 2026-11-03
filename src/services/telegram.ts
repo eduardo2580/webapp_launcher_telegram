@@ -25,8 +25,8 @@ declare global {
         expand: () => void;
         close: () => void;
         enableClosingConfirmation?: () => void;
-        openLink: (url: string, options?: { try_instant_view?: boolean; try_browser?: boolean }) => void;
-        openTelegramLink: (url: string) => void;
+        openLink?: (url: string, options?: { try_instant_view?: boolean; try_browser?: boolean }) => void;
+        openTelegramLink?: (url: string) => void;
         BackButton?: {
           isVisible: boolean;
           show: () => void;
@@ -98,45 +98,86 @@ export function getTelegramUser(): TelegramUser | null {
 }
 
 /**
- * Launches external web app / social media strictly using the device's native internet connection
- * and Telegram's official In-App Browser (SFSafariViewController / Chrome Custom Tabs).
- * This eliminates iframe X-Frame-Options blocks, enables full logins, cookies, and Passkeys.
+ * Opens URLs through Telegram's in-app browser when running as a Mini App.
  */
 export function launchExternalApp(url: string) {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch (err) {
+    console.warn('Cannot open invalid URL:', err);
+    return;
+  }
+
+  const isTelegramLink =
+    parsedUrl.protocol === 'tg:' ||
+    (parsedUrl.protocol === 'https:' && parsedUrl.hostname.toLowerCase() === 't.me');
+  const isWebLink = parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
+  if (!isTelegramLink && !isWebLink) {
+    console.warn('Cannot open unsupported URL protocol:', parsedUrl.protocol);
+    return;
+  }
+
   const tg = getTelegramWebApp();
 
-  // If URL is a telegram link
-  if (url.startsWith('https://t.me/') || url.startsWith('tg://')) {
-    if (tg?.openTelegramLink) {
-      try {
-        tg.openTelegramLink(url);
-        return;
-      } catch {
-        // Fallback below
+  if (tg) {
+    if (isTelegramLink) {
+      if (typeof tg.openTelegramLink === 'function') {
+        try {
+          tg.openTelegramLink(url);
+        } catch (err) {
+          console.warn('Telegram openTelegramLink error:', err);
+        }
+      } else {
+        console.warn('Telegram openTelegramLink is unavailable');
       }
-    }
-  }
-
-  // Official Telegram WebApp openLink
-  if (tg && typeof tg.openLink === 'function') {
-    try {
-      // In Bot API 6.4+, openLink uses Telegram's in-app browser with device connection
-      tg.openLink(url, { try_instant_view: false });
       return;
-    } catch (err) {
-      console.warn('Telegram openLink fallback:', err);
     }
+
+    if (typeof tg.openLink === 'function') {
+      try {
+        tg.openLink(url, { try_instant_view: true });
+      } catch (err) {
+        console.warn('Telegram openLink error:', err);
+      }
+    } else {
+      console.warn('Telegram openLink is unavailable');
+    }
+    return;
   }
 
-  // PWA / Browser fallback: opens in new window/tab using device's connection
-  try {
-    const newWin = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!newWin) {
-      window.location.href = url;
-    }
-  } catch {
-    window.location.href = url;
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
+}
+
+export function handleExternalLinkClick(event: MouseEvent, root: HTMLElement) {
+  const target = event.target;
+  if (!target || typeof (target as Element).closest !== 'function') return;
+
+  const element = target as Element;
+  const anchor = element.closest('a[href]');
+  if (!anchor || anchor.tagName !== 'A' || !root.contains(anchor)) return;
+  const link = anchor as HTMLAnchorElement;
+
+  let targetUrl: URL;
+  try {
+    targetUrl = new URL(link.href);
+  } catch {
+    return;
+  }
+
+  const isTelegramLink =
+    targetUrl.protocol === 'tg:' ||
+    (targetUrl.protocol === 'https:' && targetUrl.hostname.toLowerCase() === 't.me');
+  const appOrigin = root.ownerDocument.location.origin;
+  const isExternalWebLink =
+    (targetUrl.protocol === 'http:' || targetUrl.protocol === 'https:') &&
+    targetUrl.origin !== appOrigin;
+  if (!isTelegramLink && !isExternalWebLink) return;
+
+  event.preventDefault();
+  launchExternalApp(targetUrl.href);
 }
 
 export function hapticImpact(style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' = 'light') {

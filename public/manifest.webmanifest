@@ -1,7 +1,7 @@
 {
-  "name": "Telegram Web App Launcher",
-  "short_name": "Web Launcher",
-  "description": "Ultra-lightweight Telegram Mini App and Web App Launcher with Telegram Cloud Storage synchronization.",
+  "name": "Inicializador de aplicativos web para Telegram",
+  "short_name": "Inicializador Web",
+  "description": "Inicializador leve de Mini Apps do Telegram e aplicativos web, com sincronização pelo Telegram Cloud.",
   "start_url": "/",
   "id": "/",
   "scope": "/",

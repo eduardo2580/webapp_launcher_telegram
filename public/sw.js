@@ -53,11 +53,11 @@ const CORE_FALLBACK_APPS = [
     isCustom: false,
   },
   {
-    id: 'telegram',
-    title: 'Telegram Web',
-    url: 'https://web.telegram.org/a/',
-    icon: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/telegram.png',
-    category: 'Social',
+    id: 'youtube',
+    title: 'YouTube',
+    url: 'https://www.youtube.com',
+    icon: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/youtube.png',
+    category: 'Media',
     isCustom: false,
   },
   {

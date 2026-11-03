@@ -90,11 +90,11 @@ const CORE_APPS = [
     isCustom: false,
   },
   {
-    id: 'telegram',
-    title: 'Telegram Web',
-    url: 'https://web.telegram.org/a/',
-    icon: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/telegram.png',
-    category: 'Social',
+    id: 'youtube',
+    title: 'YouTube',
+    url: 'https://www.youtube.com',
+    icon: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/youtube.png',
+    category: 'Media',
     isCustom: false,
   },
   {
@@ -156,11 +156,17 @@ app.post('/api/telegram/webhook', async (req: Request, res: Response) => {
       const payload = {
         chat_id: chatId,
         text:
-          '👋 *Welcome to Web App Launcher / Bem-vindo / Bienvenido*\n\n' +
-          'Choose your preferred language / Escolha seu idioma:\n\n' +
-          '🇺🇸 English: Ultra-lightweight launcher with Telegram Cloud storage & PWA.\n' +
-          '🇧🇷 Português: Lanzador ultraleve com Telegram Cloud e PWA.\n' +
-          '🇪🇸 Español: Lanzador ultraligero con almacenamiento en Telegram Cloud y PWA.',
+          '👋 *Welcome! / Bem-vindo! / ¡Bienvenido!*\n\n' +
+          '*How to open the app / Como abrir o aplicativo / Cómo abrir la aplicación:*\n' +
+          '1. Choose your language below.\n' +
+          '2. Tap the button to open the app inside Telegram.\n' +
+          '3. Add your favorite websites using the + button.\n\n' +
+          '1. Escolha seu idioma abaixo.\n' +
+          '2. Toque no botão para abrir o aplicativo no Telegram.\n' +
+          '3. Adicione seus sites favoritos pelo botão +.\n\n' +
+          '1. Elige tu idioma abajo.\n' +
+          '2. Pulsa el botón para abrir la aplicación en Telegram.\n' +
+          '3. Añade tus sitios favoritos con el botón +.',
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [

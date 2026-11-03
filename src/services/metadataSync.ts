@@ -175,6 +175,32 @@ export async function triggerBackgroundSync(appsToSync?: WebAppItem[]): Promise<
   return false;
 }
 
+function migrateDefaultApps(apps: WebAppItem[]): WebAppItem[] {
+  const migratedApps = apps.filter((app) => app.id !== 'telegram');
+  const youtube = DEFAULT_APPS.find((app) => app.id === 'youtube');
+
+  if (youtube && !migratedApps.some((app) => app.id === youtube.id)) {
+    const telegramIndex = apps.findIndex((app) => app.id === 'telegram');
+    const insertIndex = telegramIndex < 0 ? migratedApps.length : telegramIndex;
+    migratedApps.splice(insertIndex, 0, youtube);
+  }
+
+  const changed =
+    migratedApps.length !== apps.length ||
+    migratedApps.some((app, index) => app !== apps[index]);
+  if (changed) {
+    try {
+      void persistAppMetadataWithSync(migratedApps).catch((err) => {
+        console.warn('[MetadataSync] Default app migration notice:', err);
+      });
+    } catch (err) {
+      console.warn('[MetadataSync] Default app migration notice:', err);
+    }
+  }
+
+  return migratedApps;
+}
+
 /**
  * Loads the core app metadata list with progressive offline fallback:
  * 1. Telegram Cloud Storage
@@ -192,9 +218,10 @@ export async function loadAppMetadataList(): Promise<{
     if (cloudAppsJson) {
       const parsed = JSON.parse(cloudAppsJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        const apps = migrateDefaultApps(parsed);
         // Cache this fresh cloud list into Service Worker cache in background
-        triggerBackgroundSync(parsed);
-        return { apps: parsed, source: 'cloud' };
+        triggerBackgroundSync(apps);
+        return { apps, source: 'cloud' };
       }
     }
   } catch (err) {
@@ -207,7 +234,7 @@ export async function loadAppMetadataList(): Promise<{
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.apps) && data.apps.length > 0) {
-        return { apps: data.apps, source: 'sw-cache' };
+        return { apps: migrateDefaultApps(data.apps), source: 'sw-cache' };
       }
     }
   } catch (err) {
@@ -222,7 +249,7 @@ export async function loadAppMetadataList(): Promise<{
       if (cached) {
         const data = await cached.json();
         if (Array.isArray(data.apps) && data.apps.length > 0) {
-          return { apps: data.apps, source: 'sw-cache' };
+          return { apps: migrateDefaultApps(data.apps), source: 'sw-cache' };
         }
       }
     } catch (e) {
@@ -236,8 +263,9 @@ export async function loadAppMetadataList(): Promise<{
     if (localJson) {
       const parsed = JSON.parse(localJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        triggerBackgroundSync(parsed);
-        return { apps: parsed, source: 'local' };
+        const apps = migrateDefaultApps(parsed);
+        triggerBackgroundSync(apps);
+        return { apps, source: 'local' };
       }
     }
   } catch (e) {
