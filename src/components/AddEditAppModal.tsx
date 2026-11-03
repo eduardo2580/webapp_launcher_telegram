@@ -129,6 +129,21 @@ export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
               placeholder="https://example.com"
               className="w-full px-3 py-2 rounded-xl bg-[#242f3d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-[#2481cc]"
             />
+            {(url.includes('localhost') || url.includes('127.0.0.1')) && (
+              <div className="mt-1.5 p-2 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-between text-[11px] text-amber-300">
+                <span>{getTranslation(lang, 'localhostDetected')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticImpact('light');
+                    setUrl((prev) => prev.replace('localhost', '10.0.2.2').replace('127.0.0.1', '10.0.2.2'));
+                  }}
+                  className="px-2 py-0.5 rounded bg-amber-400 text-black font-semibold text-[10px] shrink-0 hover:bg-amber-300 transition"
+                >
+                  {getTranslation(lang, 'fixWithEmulatorIp')}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Category */}

@@ -1,4 +1,4 @@
-export type Language = 'en' | 'es';
+export type Language = 'en' | 'es' | 'pt';
 
 export interface WebAppItem {
   id: string;
@@ -21,6 +21,11 @@ export interface TelegramUser {
 }
 
 export interface CloudStorageSyncState {
-  status: 'synced' | 'syncing' | 'offline' | 'fallback';
+  status: 'synced' | 'syncing' | 'offline' | 'fallback' | 'cached';
   lastSyncedAt?: number;
+  isOnline?: boolean;
+  hasBackgroundSync?: boolean;
+  swActive?: boolean;
+  cachedCount?: number;
 }
+

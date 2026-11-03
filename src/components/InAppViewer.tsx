@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, RotateCcw, Copy, Check, Key, Globe, ExternalLink, X } from './Icons';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ArrowLeft, RotateCcw, Copy, Check, Key, Globe, Smartphone, X, AlertCircle } from './Icons';
 import { WebAppItem, Language } from '../types';
 import { getTranslation } from '../i18n/translations';
-import { setTelegramBackButton, hapticImpact, hapticNotification } from '../services/telegram';
+import {
+  setTelegramBackButton,
+  hapticImpact,
+  hapticNotification,
+  getTelegramWebApp,
+  forceMemoryGarbageCollection,
+} from '../services/telegram';
 
 interface InAppViewerProps {
   app: WebAppItem;
@@ -11,18 +17,88 @@ interface InAppViewerProps {
 }
 
 export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) => {
+  const [currentUrl, setCurrentUrl] = useState(app.url);
   const [iframeKey, setIframeKey] = useState(0);
   const [showCredsDropdown, setShowCredsDropdown] = useState(false);
   const [copiedField, setCopiedField] = useState<'user' | 'pass' | null>(null);
   const [hasFrameError, setHasFrameError] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  // Bind Telegram native BackButton
+  // Identify if URL is localhost or known frame-restricted site (Instagram, Facebook, LinkedIn, X)
+  const isLocalhost = currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
+  const isRestrictedSocial =
+    currentUrl.includes('instagram.com') ||
+    currentUrl.includes('facebook.com') ||
+    currentUrl.includes('linkedin.com') ||
+    currentUrl.includes('twitter.com') ||
+    currentUrl.includes('x.com');
+
+  // Aggressive teardown function to guarantee zero memory leaks from embedded iframe
+  const destroyIframe = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    try {
+      // 1. Attempt to stop media and timers in accessible content documents
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc) {
+          const mediaNodes = doc.querySelectorAll('video, audio');
+          mediaNodes.forEach((node) => {
+            try {
+              const media = node as HTMLMediaElement;
+              media.pause();
+              media.removeAttribute('src');
+              media.load();
+            } catch {
+              // Ignore
+            }
+          });
+          doc.open();
+          doc.write('');
+          doc.close();
+        }
+      } catch {
+        // Cross-origin restriction is expected for external domains
+      }
+
+      // 2. Stop window activity and network execution
+      try {
+        iframe.contentWindow?.stop();
+      } catch {
+        // Ignore
+      }
+
+      // 3. Clear window references and navigate to about:blank to destroy DOM, scripts, and contexts
+      iframe.src = 'about:blank';
+
+      // 4. Detach from DOM if still mounted
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    } catch (err) {
+      console.warn('Iframe cleanup notice:', err);
+    } finally {
+      iframeRef.current = null;
+      forceMemoryGarbageCollection();
+    }
+  }, []);
+
+  // Aggressive close handler triggered by user or Telegram native BackButton
+  const handleAggressiveClose = useCallback(() => {
+    hapticImpact('light');
+    destroyIframe();
+    onClose();
+  }, [destroyIframe, onClose]);
+
+  // Bind Telegram native BackButton and guarantee unmount cleanup
   useEffect(() => {
-    setTelegramBackButton(true, onClose);
+    setTelegramBackButton(true, handleAggressiveClose);
     return () => {
       setTelegramBackButton(false);
+      destroyIframe();
     };
-  }, [onClose]);
+  }, [handleAggressiveClose, destroyIframe]);
 
   const handleReload = () => {
     hapticImpact('light');
@@ -41,6 +117,34 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
     }
   };
 
+  // Open strictly inside Telegram using Telegram's built-in in-app browser
+  // This bypasses X-Frame-Options and keeps logins and cookies active without leaving Telegram
+  const handleOpenInTelegramBrowser = () => {
+    hapticImpact('medium');
+    const tg = getTelegramWebApp();
+    if (tg && typeof tg.openLink === 'function') {
+      try {
+        tg.openLink(currentUrl, { try_instant_view: false });
+        return;
+      } catch (err) {
+        console.warn('Telegram openLink error:', err);
+      }
+    }
+    // Web fallback if outside Telegram
+    window.open(currentUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  // 1-Click fix for Android emulator connection refused
+  const handleFixEmulatorIp = () => {
+    hapticImpact('light');
+    const fixed = currentUrl
+      .replace('localhost', '10.0.2.2')
+      .replace('127.0.0.1', '10.0.2.2');
+    setCurrentUrl(fixed);
+    setIframeKey((prev) => prev + 1);
+    setHasFrameError(false);
+  };
+
   const hasCredentials = !!(app.username || app.password);
 
   return (
@@ -49,10 +153,7 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
       <header className="h-12 bg-[#242f3d] border-b border-white/10 px-3 flex items-center justify-between shrink-0 shadow-md">
         <div className="flex items-center gap-2 min-w-0">
           <button
-            onClick={() => {
-              hapticImpact('light');
-              onClose();
-            }}
+            onClick={handleAggressiveClose}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200 text-xs font-semibold active:scale-95 transition"
             title={getTranslation(lang, 'back')}
           >
@@ -72,14 +173,24 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
                 {app.title.charAt(0)}
               </div>
             )}
-            <span className="text-xs font-bold truncate max-w-[140px] sm:max-w-[200px]">
+            <span className="text-xs font-bold truncate max-w-[130px] sm:max-w-[200px]">
               {app.title}
             </span>
           </div>
         </div>
 
-        {/* Right action buttons: Credentials, Reload, Close */}
+        {/* Right action buttons: Telegram In-App Browser, Credentials, Reload, Close */}
         <div className="flex items-center gap-1.5 relative">
+          {/* Quick Telegram In-App browser launcher button */}
+          <button
+            onClick={handleOpenInTelegramBrowser}
+            className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg bg-[#2481cc]/20 hover:bg-[#2481cc]/30 text-[#64b5f6] text-[11px] font-semibold transition active:scale-95"
+            title={getTranslation(lang, 'openInTgBrowser')}
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span>Telegram In-App</span>
+          </button>
+
           {hasCredentials && (
             <div className="relative">
               <button
@@ -176,10 +287,7 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
 
           {/* Close button */}
           <button
-            onClick={() => {
-              hapticImpact('light');
-              onClose();
-            }}
+            onClick={handleAggressiveClose}
             className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition"
           >
             <X className="w-4 h-4" />
@@ -187,11 +295,43 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
         </div>
       </header>
 
+      {/* Helpful Notification Bar for localhost or X-Frame-Options */}
+      {isLocalhost && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-3 py-1.5 flex items-center justify-between text-xs text-amber-200">
+          <div className="flex items-center gap-1.5 truncate">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="truncate">{getTranslation(lang, 'localhostDetected')}</span>
+          </div>
+          <button
+            onClick={handleFixEmulatorIp}
+            className="px-2 py-0.5 rounded bg-amber-400 text-black font-semibold text-[10px] shrink-0 hover:bg-amber-300 transition"
+          >
+            {getTranslation(lang, 'fixWithEmulatorIp')}
+          </button>
+        </div>
+      )}
+
+      {isRestrictedSocial && (
+        <div className="bg-[#2481cc]/15 border-b border-[#2481cc]/30 px-3 py-1.5 flex items-center justify-between text-xs text-[#64b5f6]">
+          <div className="flex items-center gap-1.5 truncate">
+            <Smartphone className="w-4 h-4 text-[#64b5f6] shrink-0" />
+            <span className="truncate">{getTranslation(lang, 'frameBlockedNotice')}</span>
+          </div>
+          <button
+            onClick={handleOpenInTelegramBrowser}
+            className="px-2 py-0.5 rounded bg-[#2481cc] text-white font-semibold text-[10px] shrink-0 hover:bg-[#1d6fae] transition"
+          >
+            {getTranslation(lang, 'openInTgBrowser')}
+          </button>
+        </div>
+      )}
+
       {/* Main In-App Web View */}
       <div className="flex-1 relative bg-black/40 w-full h-full">
         <iframe
+          ref={iframeRef}
           key={iframeKey}
-          src={app.url}
+          src={currentUrl}
           title={app.title}
           className="w-full h-full border-0 bg-white"
           allow="camera; microphone; geolocation; clipboard-read; clipboard-write; fullscreen; autoplay; encrypted-media"
@@ -199,23 +339,33 @@ export const InAppViewer: React.FC<InAppViewerProps> = ({ app, lang, onClose }) 
           onError={() => setHasFrameError(true)}
         />
 
-        {/* If user needs quick access or if site restricts frame */}
+        {/* If frame fails to load or connection is refused */}
         {hasFrameError && (
           <div className="absolute inset-0 bg-[#17212b] p-6 flex flex-col items-center justify-center text-center">
             <div className="w-14 h-14 rounded-2xl bg-[#242f3d] flex items-center justify-center mb-4 text-[#64b5f6]">
               <Globe className="w-7 h-7" />
             </div>
-            <h3 className="text-base font-bold text-white mb-2">{app.title}</h3>
-            <p className="text-xs text-gray-400 max-w-xs mb-4">
-              {app.url}
+            <h3 className="text-base font-bold text-white mb-1">{app.title}</h3>
+            <p className="text-xs text-gray-400 max-w-xs mb-4 font-mono truncate">
+              {currentUrl}
             </p>
-            <button
-              onClick={handleReload}
-              className="px-4 py-2 rounded-xl bg-[#2481cc] text-white text-xs font-semibold flex items-center gap-1.5"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>{getTranslation(lang, 'reload')}</span>
-            </button>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={handleOpenInTelegramBrowser}
+                className="px-4 py-2 rounded-xl bg-[#2481cc] hover:bg-[#1d6fae] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+              >
+                <Smartphone className="w-4 h-4" />
+                <span>{getTranslation(lang, 'openInTgBrowser')}</span>
+              </button>
+              <button
+                onClick={handleReload}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>{getTranslation(lang, 'reload')}</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

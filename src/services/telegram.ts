@@ -161,11 +161,20 @@ export function hapticNotification(type: 'error' | 'success' | 'warning' = 'succ
   }
 }
 
+let activeBackHandler: (() => void) | null = null;
+
 export function setTelegramBackButton(visible: boolean, onClickHandler?: () => void) {
   const tg = getTelegramWebApp();
   if (tg?.BackButton) {
     try {
+      // Remove any previously bound handler first to avoid memory leaks or duplicate firings
+      if (activeBackHandler && typeof tg.BackButton.offClick === 'function') {
+        tg.BackButton.offClick(activeBackHandler);
+        activeBackHandler = null;
+      }
+
       if (visible && onClickHandler) {
+        activeBackHandler = onClickHandler;
         tg.BackButton.show();
         tg.BackButton.onClick(onClickHandler);
       } else {
@@ -176,6 +185,22 @@ export function setTelegramBackButton(visible: boolean, onClickHandler?: () => v
     }
   }
 }
+
+/**
+ * Aggressively invokes garbage collection hints and memory reclamation.
+ * Useful when unmounting heavy embedded WebViews, iframes, and media contexts.
+ */
+export function forceMemoryGarbageCollection() {
+  try {
+    // Check for V8 / WebKit / Node developer expose-gc flag
+    if (typeof (window as unknown as { gc?: () => void }).gc === 'function') {
+      (window as unknown as { gc: () => void }).gc();
+    }
+  } catch {
+    // Ignore in non-debug runtimes
+  }
+}
+
 
 /**
  * Checks whether Telegram CloudStorage API is supported.

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  network_security_config.xml
+  Coloque este arquivo em: android/app/src/main/res/xml/network_security_config.xml
+  Ele permite conexões HTTP (Cleartext) para desenvolvimento local e emuladores,
+  evitando o erro ERR_CONNECTION_REFUSED e bloqueios de tráfego não criptografado no Android 9+ (API 28+).
+-->
+<network-security-config>
+    <!-- Configuração para o domínio de desenvolvimento local e emulador Android -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Loopback padrão -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- IP do host visto pelo emulador oficial do Android Studio -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- IP do host no emulador Genymotion -->
+        <domain includeSubdomains="true">10.0.3.2</domain>
+        <!-- Sub-redes comuns de rede local Wi-Fi para testes em dispositivos físicos -->
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">192.168.1.0</domain>
+        <domain includeSubdomains="true">10.0.0.0</domain>
+    </domain-config>
+
+    <!-- Configuração padrão para outros domínios (produção deve usar HTTPS) -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
