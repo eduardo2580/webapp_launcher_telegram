@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 8080;
 const isProd = process.env.NODE_ENV === 'production';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -117,6 +117,27 @@ type TelegramBotApp = {
   title: string;
   url: string;
   category: AppCategory;
+};
+type TelegramApiResponse<T> = {
+  ok?: boolean;
+  result?: T;
+  description?: string;
+};
+type TelegramBotMessage = {
+  chat?: { id?: number; type?: string };
+  message_id?: number;
+  text?: string;
+  from?: { language_code?: string };
+};
+type TelegramBotUpdate = {
+  update_id: number;
+  message?: TelegramBotMessage;
+  callback_query?: {
+    id?: string;
+    data?: string;
+    from?: { language_code?: string };
+    message?: TelegramBotMessage;
+  };
 };
 
 const APP_CATEGORIES: AppCategory[] = ['Social', 'Work', 'Tools', 'Media', 'Other'];
@@ -277,27 +298,29 @@ function parseBotMenuCallback(data: unknown): { category: AppCategory | 'All'; p
   return null;
 }
 
-async function callTelegramApi(method: string, payload: Record<string, unknown>): Promise<void> {
+async function callTelegramApi<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T> {
   let response: Awaited<ReturnType<typeof fetch>>;
   try {
     response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(method === 'getUpdates' ? 40_000 : 15_000),
     });
   } catch {
     throw new Error(`Telegram ${method} network request failed.`);
   }
 
-  let result: { ok?: boolean; description?: string };
+  let result: TelegramApiResponse<T>;
   try {
-    result = await response.json() as { ok?: boolean; description?: string };
+    result = await response.json() as TelegramApiResponse<T>;
   } catch {
     throw new Error(`Telegram ${method} returned an invalid response (${response.status}).`);
   }
   if (!response.ok || !result.ok) {
     throw new Error(`Telegram ${method} failed (${response.status}): ${result.description || 'unknown error'}`);
   }
+  return result.result as T;
 }
 
 // Core app metadata endpoint for Service Worker background sync & offline caching
@@ -326,65 +349,103 @@ app.post('/api/apps/sync', (req: Request, res: Response) => {
   });
 });
 
-/**
- * Telegram Bot Webhook endpoint.
- * The bot menu is rendered and navigated entirely through Telegram messages and inline buttons.
- */
-app.post('/api/telegram/webhook', async (req: Request, res: Response) => {
-  const update = req.body;
-  res.status(200).send('OK');
+async function handleTelegramUpdate(update: TelegramBotUpdate): Promise<void> {
+  const callback = update.callback_query;
+  if (callback) {
+    if (!callback.id) return;
+    await callTelegramApi('answerCallbackQuery', { callback_query_id: callback.id });
 
-  if (!BOT_TOKEN) return;
-
-  try {
-    const callback = update?.callback_query;
-    if (callback) {
-      if (!callback.id) return;
-      await callTelegramApi('answerCallbackQuery', { callback_query_id: callback.id });
-
-      const state = parseBotMenuCallback(callback.data);
-      const chatId = callback.message?.chat?.id;
-      const messageId = callback.message?.message_id;
-      if (!state || chatId === undefined || messageId === undefined) return;
-
-      const menu = renderBotAppMenu(
-        getBotLanguage(callback.from?.language_code),
-        state.category,
-        state.page,
-        callback.message?.chat?.type === 'private',
-      );
-      await callTelegramApi('editMessageText', {
-        chat_id: chatId,
-        message_id: messageId,
-        text: menu.text,
-        parse_mode: 'HTML',
-        reply_markup: menu.reply_markup,
-      });
-      return;
-    }
-
-    const message = update?.message;
-    if (!message?.chat?.id || typeof message.text !== 'string') return;
-    const command = message.text.trim().split(/\s+/, 1)[0].split('@', 1)[0];
-    if (command !== '/start' && command !== '/launcher') return;
+    const state = parseBotMenuCallback(callback.data);
+    const chatId = callback.message?.chat?.id;
+    const messageId = callback.message?.message_id;
+    if (!state || chatId === undefined || messageId === undefined) return;
 
     const menu = renderBotAppMenu(
-      getBotLanguage(message.from?.language_code),
-      'All',
-      0,
-      message.chat.type === 'private',
+      getBotLanguage(callback.from?.language_code),
+      state.category,
+      state.page,
+      callback.message?.chat?.type === 'private',
     );
-    await callTelegramApi('sendMessage', {
-      chat_id: message.chat.id,
+    await callTelegramApi('editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
       text: menu.text,
       parse_mode: 'HTML',
       reply_markup: menu.reply_markup,
     });
-  } catch (error) {
+    return;
+  }
+
+  const message = update.message;
+  if (!message?.chat?.id || typeof message.text !== 'string') return;
+  const command = message.text.trim().split(/\s+/, 1)[0].split('@', 1)[0];
+  if (command !== '/start' && command !== '/launcher') return;
+
+  const menu = renderBotAppMenu(
+    getBotLanguage(message.from?.language_code),
+    'All',
+    0,
+    message.chat.type === 'private',
+  );
+  await callTelegramApi('sendMessage', {
+    chat_id: message.chat.id,
+    text: menu.text,
+    parse_mode: 'HTML',
+    reply_markup: menu.reply_markup,
+  });
+}
+
+app.post('/api/telegram/webhook', async (req: Request, res: Response) => {
+  res.status(200).send('OK');
+  if (!BOT_TOKEN) return;
+
+  const update = req.body as TelegramBotUpdate;
+  void handleTelegramUpdate(update).catch((error: unknown) => {
     const details = error instanceof Error ? error.message : 'Unknown Telegram webhook error.';
     console.warn('[Telegram webhook] Failed to update the app menu:', details);
-  }
+  });
 });
+
+async function startTelegramPolling(): Promise<void> {
+  if (!BOT_TOKEN) return;
+
+  try {
+    await callTelegramApi('deleteWebhook', { drop_pending_updates: false });
+    console.log('[Telegram Bot] Long polling started.');
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Unknown Telegram polling error.';
+    console.error('[Telegram Bot] Could not initialize long polling:', details);
+    return;
+  }
+
+  let offset = 0;
+  let retryDelay = 1_000;
+  while (true) {
+    try {
+      const updates = await callTelegramApi<TelegramBotUpdate[]>('getUpdates', {
+        offset,
+        timeout: 25,
+        allowed_updates: ['message', 'callback_query'],
+      });
+
+      for (const update of updates) {
+        offset = Math.max(offset, update.update_id + 1);
+        try {
+          await handleTelegramUpdate(update);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : 'Unknown Telegram update error.';
+          console.warn('[Telegram Bot] Failed to process an update:', details);
+        }
+      }
+      retryDelay = 1_000;
+    } catch (error) {
+      const details = error instanceof Error ? error.message : 'Unknown Telegram polling error.';
+      console.error('[Telegram Bot] Polling failed; retrying:', details);
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      retryDelay = Math.min(retryDelay * 2, 30_000);
+    }
+  }
+}
 
 async function startServer() {
   if (!isProd) {
@@ -425,6 +486,7 @@ async function startServer() {
   // iOS simulators, and local Wi-Fi devices, avoiding ERR_CONNECTION_REFUSED
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] Web App Launcher running on http://0.0.0.0:${PORT}`);
+    if (BOT_TOKEN) void startTelegramPolling();
   });
 }
 
