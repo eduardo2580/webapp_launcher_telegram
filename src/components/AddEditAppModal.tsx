@@ -1,427 +1,238 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Globe, 
-  Sparkles, 
-  Image, 
-  Layers, 
-  ShieldAlert,
-  Palette,
-  Lock,
-  User,
-  Eye,
-  EyeOff,
-  Cloud
-} from 'lucide-react';
+import { X, Lock, Globe, Tag, Image, Check } from 'lucide-react';
 import { WebAppItem, Language } from '../types';
-import { translations } from '../i18n/translations';
-import { triggerHaptic } from '../services/telegram';
+import { getTranslation } from '../i18n/translations';
+import { hapticImpact, hapticNotification } from '../services/telegram';
 
 interface AddEditAppModalProps {
   isOpen: boolean;
-  language: Language;
-  onClose: () => void;
+  editingApp: WebAppItem | null;
+  lang: Language;
   onSave: (app: WebAppItem) => void;
-  editingApp?: WebAppItem | null;
+  onClose: () => void;
 }
 
-const CATEGORIES: WebAppItem['category'][] = [
-  'Social',
-  'Productivity',
-  'Utilities',
-  'Media',
-  'News',
-  'Games',
-  'Custom'
-];
-
-const QUICK_PRESETS = [
-  { name: 'YouTube', url: 'https://youtube.com', category: 'Media' as const, color: '#FF0000' },
-  { name: 'X / Twitter', url: 'https://x.com', category: 'Social' as const, color: '#000000' },
-  { name: 'Reddit', url: 'https://reddit.com', category: 'Social' as const, color: '#FF4500' },
-  { name: 'Notion', url: 'https://notion.so', category: 'Productivity' as const, color: '#000000' },
-  { name: 'Spotify', url: 'https://open.spotify.com', category: 'Media' as const, color: '#1DB954' },
-  { name: 'DuckDuckGo', url: 'https://duckduckgo.com', category: 'Utilities' as const, color: '#DE5833' },
-];
-
-const PRESET_COLORS = [
-  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', 
-  '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'
+const PRESET_ICONS = [
+  { label: 'Globe', url: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/chrome.png' },
+  { label: 'GitHub', url: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/github.png' },
+  { label: 'YouTube', url: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/youtube.png' },
+  { label: 'Reddit', url: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/reddit.png' },
+  { label: 'Notion', url: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/notion.png' },
+  { label: 'Spotify', url: 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/spotify.png' },
 ];
 
 export const AddEditAppModal: React.FC<AddEditAppModalProps> = ({
   isOpen,
-  language,
-  onClose,
+  editingApp,
+  lang,
   onSave,
-  editingApp
+  onClose,
 }) => {
-  const [name, setName] = useState('');
+  const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
-  const [iconUrl, setIconUrl] = useState('');
-  const [category, setCategory] = useState<WebAppItem['category']>('Utilities');
-  const [description, setDescription] = useState('');
-  const [accentColor, setAccentColor] = useState('#3b82f6');
+  const [icon, setIcon] = useState('');
+  const [category, setCategory] = useState<WebAppItem['category']>('Other');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const t = translations[language];
 
   useEffect(() => {
     if (editingApp) {
-      setName(editingApp.name);
+      setTitle(editingApp.title);
       setUrl(editingApp.url);
-      setIconUrl(editingApp.iconUrl || '');
+      setIcon(editingApp.icon || '');
       setCategory(editingApp.category);
-      setDescription(editingApp.description || '');
-      setAccentColor(editingApp.accentColor || '#3b82f6');
       setUsername(editingApp.username || '');
       setPassword(editingApp.password || '');
     } else {
-      setName('');
+      setTitle('');
       setUrl('');
-      setIconUrl('');
-      setCategory('Utilities');
-      setDescription('');
-      setAccentColor('#3b82f6');
+      setIcon('');
+      setCategory('Other');
       setUsername('');
       setPassword('');
     }
-    setShowPassword(false);
-    setError('');
   }, [editingApp, isOpen]);
-
-  const handleUrlBlur = () => {
-    if (!url) return;
-    let cleanUrl = url.trim();
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      cleanUrl = `https://${cleanUrl}`;
-      setUrl(cleanUrl);
-    }
-
-    try {
-      const parsed = new URL(cleanUrl);
-      if (!iconUrl) {
-        setIconUrl(`https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=128`);
-      }
-      if (!name) {
-        const hostParts = parsed.hostname.replace(/^www\./, '').split('.');
-        if (hostParts.length > 0) {
-          const capitalized = hostParts[0].charAt(0).toUpperCase() + hostParts[0].slice(1);
-          setName(capitalized);
-        }
-      }
-    } catch {}
-  };
-
-  const handleApplyPreset = (preset: typeof QUICK_PRESETS[0]) => {
-    triggerHaptic('selection');
-    setName(preset.name);
-    setUrl(preset.url);
-    setCategory(preset.category);
-    setAccentColor(preset.color);
-    try {
-      const parsed = new URL(preset.url);
-      setIconUrl(`https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=128`);
-    } catch {}
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    triggerHaptic('medium');
-
-    if (!name.trim()) {
-      setError(t.modal.errors.nameRequired);
-      return;
-    }
-
-    let finalUrl = url.trim();
-    if (!finalUrl) {
-      setError(t.modal.errors.urlRequired);
-      return;
-    }
-
-    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-      finalUrl = `https://${finalUrl}`;
-    }
-
-    try {
-      new URL(finalUrl);
-    } catch {
-      setError(t.modal.errors.invalidUrl);
-      return;
-    }
-
-    const appItem: WebAppItem = {
-      id: editingApp ? editingApp.id : `app_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      name: name.trim(),
-      url: finalUrl,
-      iconUrl: iconUrl.trim() || undefined,
-      category,
-      description: description.trim() || undefined,
-      accentColor,
-      username: username.trim() || undefined,
-      password: password.trim() || undefined,
-      isDefault: editingApp?.isDefault ?? false,
-      createdAt: editingApp?.createdAt ?? Date.now()
-    };
-
-    onSave(appItem);
-    onClose();
-  };
 
   if (!isOpen) return null;
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !url.trim()) return;
+
+    let finalUrl = url.trim();
+    if (!/^https?:\/\//i.test(finalUrl)) {
+      finalUrl = 'https://' + finalUrl;
+    }
+
+    const item: WebAppItem = {
+      id: editingApp ? editingApp.id : `app_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      title: title.trim(),
+      url: finalUrl,
+      icon: icon.trim() || undefined,
+      category,
+      username: username.trim() || undefined,
+      password: password.trim() || undefined,
+      isCustom: editingApp ? editingApp.isCustom : true,
+    };
+
+    hapticNotification('success');
+    onSave(item);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-      <div 
-        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-[var(--tg-theme-bg-color,#17212b)] border border-[var(--tg-theme-secondary-bg-color,#232e3c)] shadow-2xl p-5 text-[var(--tg-theme-text-color,#ffffff)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-md bg-[#17212b] border border-white/10 rounded-2xl p-5 shadow-2xl animate-in fade-in zoom-in-95 my-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-[var(--tg-theme-secondary-bg-color,#232e3c)] mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
-              <Cloud className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-[var(--tg-theme-text-color,#ffffff)]">
-                {editingApp ? t.modal.editTitle : t.modal.addTitle}
-              </h2>
-              <p className="text-xs text-[var(--tg-theme-hint-color,#708499)] flex items-center gap-1">
-                <span>{t.modal.subtitle}</span>
-              </p>
-            </div>
-          </div>
+        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <h2 className="text-base font-bold text-white">
+            {editingApp ? getTranslation(lang, 'editApp') : getTranslation(lang, 'addApp')}
+          </h2>
           <button
             onClick={() => {
-              triggerHaptic('selection');
+              hapticImpact('light');
               onClose();
             }}
-            className="p-2 rounded-xl text-[var(--tg-theme-hint-color,#708499)] hover:text-white hover:bg-[var(--tg-theme-secondary-bg-color,#232e3c)] transition-colors"
+            className="p-1 text-gray-400 hover:text-white rounded-lg transition"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Quick Presets */}
-        {!editingApp && (
-          <div className="mb-4">
-            <span className="text-[11px] font-semibold text-[var(--tg-theme-hint-color,#708499)] uppercase tracking-wider block mb-2">
-              {t.modal.quickSuggestions}
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_PRESETS.map((p) => (
-                <button
-                  key={p.name}
-                  type="button"
-                  onClick={() => handleApplyPreset(p)}
-                  className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--tg-theme-secondary-bg-color,#232e3c)] hover:bg-[var(--tg-theme-section-bg-color,#1c2733)] text-[var(--tg-theme-text-color,#ffffff)] border border-transparent hover:border-sky-500/40 transition-all flex items-center gap-1.5"
-                >
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-                  <span>{p.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Web URL */}
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3.5 text-xs">
+          {/* App Title */}
           <div>
-            <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              {t.modal.urlLabel}
-            </label>
-            <div className="relative">
-              <Globe className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)]" />
-              <input
-                type="text"
-                required
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onBlur={handleUrlBlur}
-                placeholder={t.modal.urlPlaceholder}
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all font-mono"
-              />
-            </div>
-          </div>
-
-          {/* App Name */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              {t.modal.nameLabel}
+            <label className="block text-gray-300 font-medium mb-1">
+              {getTranslation(lang, 'appName')} *
             </label>
             <input
               type="text"
               required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t.modal.namePlaceholder}
-              className="w-full px-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. My Favorite App"
+              className="w-full px-3 py-2 rounded-xl bg-[#242f3d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-[#2481cc]"
             />
           </div>
 
-          {/* Telegram Cloud Storage Credentials Section */}
-          <div className="p-3.5 rounded-2xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] border border-sky-500/20 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-sky-400" />
-                <span className="text-xs font-bold text-[var(--tg-theme-text-color,#ffffff)]">
-                  {t.modal.credentialsSection}
-                </span>
-              </div>
-              <span className="text-[10px] bg-sky-500/15 text-sky-400 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Cloud className="w-2.5 h-2.5" />
-                <span>Cloud</span>
-              </span>
-            </div>
-            <p className="text-[11px] text-[var(--tg-theme-hint-color,#708499)]">
-              {t.modal.credentialsDesc}
-            </p>
-
-            {/* Username / Email */}
-            <div>
-              <label className="block text-[11px] font-medium text-[var(--tg-theme-hint-color,#708499)] mb-1">
-                {t.modal.usernameLabel}
-              </label>
-              <div className="relative">
-                <User className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)]" />
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={t.modal.usernamePlaceholder}
-                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[var(--tg-theme-bg-color,#17212b)] text-xs text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-[11px] font-medium text-[var(--tg-theme-hint-color,#708499)] mb-1">
-                {t.modal.passwordLabel}
-              </label>
-              <div className="relative">
-                <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)]" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t.modal.passwordPlaceholder}
-                  className="w-full pl-8 pr-9 py-1.5 rounded-xl bg-[var(--tg-theme-bg-color,#17212b)] text-xs text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="p-1 text-[var(--tg-theme-hint-color,#708499)] hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2"
-                >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Custom Icon URL */}
+          {/* App URL */}
           <div>
-            <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              {t.modal.iconLabel}
+            <label className="block text-gray-300 font-medium mb-1 flex items-center gap-1">
+              <Globe className="w-3.5 h-3.5 text-[#64b5f6]" />
+              <span>{getTranslation(lang, 'appUrl')} *</span>
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Image className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)]" />
-                <input
-                  type="text"
-                  value={iconUrl}
-                  onChange={(e) => setIconUrl(e.target.value)}
-                  placeholder={t.modal.iconPlaceholder}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-xs text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all font-mono"
-                />
-              </div>
-              {iconUrl && (
-                <div className="w-9 h-9 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] flex items-center justify-center p-1 border border-white/10 flex-shrink-0">
-                  <img src={iconUrl} alt="Preview" className="w-6 h-6 object-contain rounded" onError={() => {}} />
-                </div>
-              )}
-            </div>
+            <input
+              type="text"
+              required
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com"
+              className="w-full px-3 py-2 rounded-xl bg-[#242f3d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-[#2481cc]"
+            />
           </div>
 
           {/* Category */}
           <div>
-            <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              {t.modal.categoryLabel}
+            <label className="block text-gray-300 font-medium mb-1 flex items-center gap-1">
+              <Tag className="w-3.5 h-3.5 text-[#64b5f6]" />
+              <span>{getTranslation(lang, 'category')}</span>
             </label>
-            <div className="relative">
-              <Layers className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--tg-theme-hint-color,#708499)] pointer-events-none" />
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as WebAppItem['category'])}
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] border border-transparent focus:border-sky-500/50 focus:outline-none appearance-none cursor-pointer"
-              >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat} className="bg-[#17212b]">
-                    {t.categories[cat] || cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Accent Color */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1.5 flex items-center gap-1">
-              <Palette className="w-3.5 h-3.5" />
-              <span>{t.modal.colorLabel}</span>
-            </label>
-            <div className="flex items-center gap-2">
-              {PRESET_COLORS.map((c) => (
+            <div className="grid grid-cols-5 gap-1.5">
+              {(['Social', 'Work', 'Tools', 'Media', 'Other'] as const).map((cat) => (
                 <button
-                  key={c}
                   type="button"
-                  onClick={() => setAccentColor(c)}
-                  className={`w-6 h-6 rounded-full transition-transform ${accentColor === c ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-[#17212b]' : 'opacity-70 hover:opacity-100'}`}
-                  style={{ backgroundColor: c }}
-                />
+                  key={cat}
+                  onClick={() => {
+                    hapticImpact('light');
+                    setCategory(cat);
+                  }}
+                  className={`py-1.5 text-center rounded-lg font-medium transition ${
+                    category === cat
+                      ? 'bg-[#2481cc] text-white'
+                      : 'bg-[#242f3d] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Description */}
+          {/* Icon URL and presets */}
           <div>
-            <label className="block text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] mb-1">
-              {t.modal.descLabel}
+            <label className="block text-gray-300 font-medium mb-1 flex items-center gap-1">
+              <Image className="w-3.5 h-3.5 text-[#64b5f6]" />
+              <span>{getTranslation(lang, 'iconUrl')}</span>
             </label>
-            <textarea
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t.modal.descPlaceholder}
-              className="w-full px-3 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-sm text-[var(--tg-theme-text-color,#ffffff)] placeholder-[var(--tg-theme-hint-color,#708499)] border border-transparent focus:border-sky-500/50 focus:outline-none transition-all resize-none"
+            <input
+              type="url"
+              value={icon}
+              onChange={(e) => setIcon(e.target.value)}
+              placeholder="https://.../icon.png"
+              className="w-full px-3 py-2 rounded-xl bg-[#242f3d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-[#2481cc]"
             />
+            {/* Quick preset icons */}
+            <div className="flex items-center gap-2 mt-2 overflow-x-auto pb-1">
+              <span className="text-[10px] text-gray-400 shrink-0">Presets:</span>
+              {PRESET_ICONS.map((p) => (
+                <button
+                  type="button"
+                  key={p.label}
+                  onClick={() => {
+                    hapticImpact('light');
+                    setIcon(p.url);
+                  }}
+                  className={`p-1 rounded-lg border shrink-0 transition flex items-center justify-center ${
+                    icon === p.url ? 'border-[#2481cc] bg-[#2481cc]/20' : 'border-white/10 bg-[#242f3d]'
+                  }`}
+                  title={p.label}
+                >
+                  <img src={p.url} alt={p.label} className="w-4 h-4 object-contain" />
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Footer Submit */}
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-[var(--tg-theme-secondary-bg-color,#232e3c)]">
+          {/* Optional Cloud Credentials */}
+          <div className="pt-2 border-t border-white/10">
+            <div className="flex items-center gap-1.5 mb-2 text-amber-300 font-semibold">
+              <Lock className="w-3.5 h-3.5" />
+              <span>{getTranslation(lang, 'credentialsOptional')}</span>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={getTranslation(lang, 'username')}
+                className="w-full px-3 py-2 rounded-xl bg-[#242f3d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-[#2481cc]"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={getTranslation(lang, 'password')}
+                className="w-full px-3 py-2 rounded-xl bg-[#242f3d] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-[#2481cc]"
+              />
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="pt-3 flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] hover:text-white hover:bg-[var(--tg-theme-secondary-bg-color,#232e3c)] transition-colors"
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-medium transition"
             >
-              {t.modal.cancel}
+              {getTranslation(lang, 'cancel')}
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-[var(--tg-theme-button-color,#2b73bc)] text-[var(--tg-theme-button-text-color,#ffffff)] text-xs font-bold hover:opacity-95 active:scale-95 transition-all shadow-md shadow-blue-500/20"
+              className="px-5 py-2 rounded-xl bg-[#2481cc] hover:bg-[#1d6fae] text-white font-semibold flex items-center gap-1.5 shadow transition"
             >
-              {editingApp ? t.modal.save : t.modal.create}
+              <Check className="w-4 h-4" />
+              <span>{getTranslation(lang, 'save')}</span>
             </button>
           </div>
         </form>

@@ -1,20 +1,14 @@
-import { Language } from './i18n/translations';
-
-export type { Language };
+export type Language = 'en' | 'es';
 
 export interface WebAppItem {
   id: string;
-  name: string;
+  title: string;
   url: string;
-  iconUrl?: string;
-  category: 'Social' | 'Productivity' | 'Utilities' | 'Media' | 'News' | 'Games' | 'Custom';
-  description?: string;
-  isDefault?: boolean;
-  accentColor?: string;
-  createdAt: number;
-  // Telegram Cloud Stored credentials
+  icon?: string;
+  category: 'Social' | 'Work' | 'Tools' | 'Media' | 'Other';
   username?: string;
   password?: string;
+  isCustom?: boolean;
 }
 
 export interface TelegramUser {
@@ -24,15 +18,9 @@ export interface TelegramUser {
   username?: string;
   language_code?: string;
   photo_url?: string;
-  is_premium?: boolean;
 }
 
-export interface UserPreferences {
-  language: Language;
-}
-
-export interface CloudCredentials {
-  username?: string;
-  password?: string;
-  lastSynced?: number;
+export interface CloudStorageSyncState {
+  status: 'synced' | 'syncing' | 'offline' | 'fallback';
+  lastSyncedAt?: number;
 }

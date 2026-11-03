@@ -1,385 +1,279 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Search, Sparkles } from 'lucide-react';
+import { WebAppItem, Language, TelegramUser, CloudStorageSyncState } from './types';
+import { DEFAULT_APPS } from './data/defaultApps';
+import { translations, getTranslation } from './i18n/translations';
+import {
+  initTelegramUI,
+  getTelegramUser,
+  cloudStorageGetItem,
+  cloudStorageSetItem,
+  isCloudStorageAvailable,
+  launchExternalApp,
+  hapticImpact,
+} from './services/telegram';
 import { Header } from './components/Header';
 import { AppCard } from './components/AppCard';
-import { EmbedViewer } from './components/EmbedViewer';
+import { LaunchModal } from './components/LaunchModal';
 import { AddEditAppModal } from './components/AddEditAppModal';
-import { DEFAULT_APPS } from './data/defaultApps';
-import { WebAppItem, TelegramUser, Language } from './types';
-import { translations } from './i18n/translations';
-import { 
-  initTelegramApp, 
-  isTelegramEnv, 
-  getTelegramUser, 
-  getInitDataString, 
-  triggerHaptic,
-  cloudStorageGetItem,
-  cloudStorageSetItem
-} from './services/telegram';
-import { Compass, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { PWAInstallButton } from './components/PWAInstallButton';
 
-const CATEGORY_TABS: (WebAppItem['category'] | 'All')[] = [
-  'All',
-  'Social',
-  'Productivity',
-  'Utilities',
-  'Media',
-  'News',
-  'Games',
-  'Custom'
-];
+const STORAGE_KEY_APPS = 'tma_cloud_apps';
+const STORAGE_KEY_LANG = 'tma_lang';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<TelegramUser | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-
-  // Bi-lingual Language Preference (English / Spanish)
-  const [language, setLanguage] = useState<Language>(() => {
-    if (typeof window !== 'undefined') {
-      const urlLang = new URLSearchParams(window.location.search).get('lang');
-      if (urlLang === 'es' || urlLang === 'en') return urlLang;
-      const stored = localStorage.getItem('tma_lang');
-      if (stored === 'es' || stored === 'en') return stored;
-      if (navigator.language?.startsWith('es')) return 'es';
-    }
-    return 'en';
+  const [lang, setLang] = useState<Language>('en');
+  const [apps, setApps] = useState<WebAppItem[]>(DEFAULT_APPS);
+  const [user, setUser] = useState<TelegramUser | null>(null);
+  const [launchingApp, setLaunchingApp] = useState<WebAppItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingApp, setEditingApp] = useState<WebAppItem | null>(null);
+  const [syncState, setSyncState] = useState<CloudStorageSyncState>({
+    status: 'syncing',
   });
 
-  const t = translations[language];
-
-  // Apps state
-  const [apps, setApps] = useState<WebAppItem[]>([]);
-  const [activeEmbedApp, setActiveEmbedApp] = useState<WebAppItem | null>(null);
-
-  // Filter & Search
-  const [activeCategory, setActiveCategory] = useState<WebAppItem['category'] | 'All'>('All');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Modals
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingApp, setEditingApp] = useState<WebAppItem | null>(null);
-  const [deleteConfirmAppId, setDeleteConfirmAppId] = useState<string | null>(null);
-
-  // Toast
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
-  }, []);
-
-  // Sync language with Telegram Cloud Storage
-  const handleToggleLanguage = useCallback((newLang: Language) => {
-    setLanguage(newLang);
-    try { localStorage.setItem('tma_lang', newLang); } catch {}
-    cloudStorageSetItem('tma_lang', newLang).catch(() => {});
-  }, []);
-
-  // Init Telegram
+  // Initialize Telegram environment and load state from Telegram Cloud Storage
   useEffect(() => {
-    initTelegramApp();
+    initTelegramUI();
     const tgUser = getTelegramUser();
     if (tgUser) {
-      setCurrentUser(tgUser);
+      setUser(tgUser);
     }
 
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('action') === 'add') {
-      setIsAddModalOpen(true);
-    }
-    const paramLang = searchParams.get('lang');
-    if (paramLang === 'es' || paramLang === 'en') {
-      setLanguage(paramLang);
-    } else {
-      // Load saved language from Telegram Cloud Storage
-      cloudStorageGetItem('tma_lang').then((savedLang) => {
-        if (savedLang === 'es' || savedLang === 'en') {
-          setLanguage(savedLang);
-        }
-      });
-    }
+    // Determine initial language
+    const initialLang: Language = tgUser?.language_code?.startsWith('es') ? 'es' : 'en';
 
-    const initDataStr = getInitDataString();
-    if (initDataStr) {
-      fetch('/api/auth/validate-init-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: initDataStr })
-      })
-        .then(r => r.json())
-        .then(authRes => {
-          if (authRes.user) setCurrentUser(authRes.user);
-        })
-        .catch(() => {});
-    }
-  }, []);
-
-  // Sync theme
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
-
-  // Load apps directly from Telegram Cloud Storage (with fallback to local storage)
-  useEffect(() => {
-    const userId = currentUser?.id || 'guest';
-    const localKey = `tma_apps_${userId}`;
-
-    // 1. Query Telegram Cloud Storage
-    cloudStorageGetItem('tma_cloud_apps').then((cloudVal) => {
-      if (cloudVal) {
-        try {
-          const parsed = JSON.parse(cloudVal);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setApps(parsed);
-            try { localStorage.setItem(localKey, cloudVal); } catch {}
-            return;
-          }
-        } catch {}
-      }
-
-      // 2. Fallback to localStorage
+    // Load persisted state from Telegram Cloud Storage / LocalStorage
+    async function loadCloudData() {
       try {
-        const cached = localStorage.getItem(localKey);
-        if (cached) {
-          const parsed = JSON.parse(cached);
+        // Load language preference
+        const savedLang = await cloudStorageGetItem(STORAGE_KEY_LANG);
+        if (savedLang === 'en' || savedLang === 'es') {
+          setLang(savedLang);
+        } else {
+          setLang(initialLang);
+        }
+
+        // Load apps list with credentials
+        const savedAppsJson = await cloudStorageGetItem(STORAGE_KEY_APPS);
+        if (savedAppsJson) {
+          const parsed = JSON.parse(savedAppsJson);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setApps(parsed);
-            return;
           }
         }
-      } catch {}
 
-      // 3. Fallback to default presets
-      setApps(DEFAULT_APPS);
-    });
-  }, [currentUser?.id]);
-
-  // Save apps list directly to Telegram Cloud Storage & LocalStorage
-  const handleSaveAppsList = useCallback((updatedApps: WebAppItem[]) => {
-    const userId = currentUser?.id || 'guest';
-    const localKey = `tma_apps_${userId}`;
-    const serialized = JSON.stringify(updatedApps);
-
-    setApps(updatedApps);
-    try { localStorage.setItem(localKey, serialized); } catch {}
-
-    // Persist apps and credentials directly in Telegram Cloud Storage
-    cloudStorageSetItem('tma_cloud_apps', serialized).catch(() => {});
-  }, [currentUser?.id]);
-
-  // Add / Edit app
-  const handleSaveApp = useCallback((appItem: WebAppItem) => {
-    triggerHaptic('success');
-    let updated: WebAppItem[];
-    const exists = apps.some(a => a.id === appItem.id);
-
-    if (exists) {
-      updated = apps.map(a => (a.id === appItem.id ? appItem : a));
-      showToast(`${t.toasts.updated}: ${appItem.name}`);
-    } else {
-      updated = [appItem, ...apps];
-      showToast(`${t.toasts.added}: ${appItem.name}`);
+        setSyncState({
+          status: isCloudStorageAvailable() ? 'synced' : 'fallback',
+          lastSyncedAt: Date.now(),
+        });
+      } catch (err) {
+        console.warn('Failed to load Telegram Cloud data:', err);
+        setSyncState({ status: 'fallback' });
+      }
     }
 
-    handleSaveAppsList(updated);
-    setEditingApp(null);
-  }, [apps, handleSaveAppsList, showToast, t.toasts.added, t.toasts.updated]);
-
-  // Delete app
-  const handleDeleteApp = useCallback((appId: string) => {
-    triggerHaptic('warning');
-    const target = apps.find(a => a.id === appId);
-    const updated = apps.filter(a => a.id !== appId);
-    handleSaveAppsList(updated);
-    setDeleteConfirmAppId(null);
-    showToast(`${t.toasts.deleted}: ${target?.name || 'app'}`);
-  }, [apps, handleSaveAppsList, showToast, t.toasts.deleted]);
-
-  // Reset defaults
-  const handleResetDefaults = useCallback(() => {
-    triggerHaptic('medium');
-    handleSaveAppsList(DEFAULT_APPS);
-    showToast(t.toasts.reset);
-  }, [handleSaveAppsList, showToast, t.toasts.reset]);
-
-  // Launch in-app embed
-  const handleLaunchEmbed = useCallback((appItem: WebAppItem) => {
-    triggerHaptic('medium');
-    setActiveEmbedApp(appItem);
+    loadCloudData();
   }, []);
 
-  // Filtered apps
+  // Save apps whenever modified
+  const persistApps = useCallback(async (newApps: WebAppItem[]) => {
+    setApps(newApps);
+    setSyncState((prev) => ({ ...prev, status: 'syncing' }));
+    try {
+      await cloudStorageSetItem(STORAGE_KEY_APPS, JSON.stringify(newApps));
+      setSyncState({
+        status: isCloudStorageAvailable() ? 'synced' : 'fallback',
+        lastSyncedAt: Date.now(),
+      });
+    } catch (e) {
+      console.warn('Cloud sync error:', e);
+      setSyncState({ status: 'fallback' });
+    }
+  }, []);
+
+  // Save language changes
+  const handleLanguageChange = async (newLang: Language) => {
+    setLang(newLang);
+    try {
+      await cloudStorageSetItem(STORAGE_KEY_LANG, newLang);
+    } catch {
+      // Ignored
+    }
+  };
+
+  // Launch app handler: If app has credentials, open credential helper sheet; otherwise open directly on device
+  const handleLaunchApp = (item: WebAppItem) => {
+    if (item.username || item.password) {
+      setLaunchingApp(item);
+    } else {
+      hapticImpact('heavy');
+      launchExternalApp(item.url);
+    }
+  };
+
+  // Add / Edit app handler
+  const handleSaveApp = (savedItem: WebAppItem) => {
+    let updated: WebAppItem[];
+    const exists = apps.some((a) => a.id === savedItem.id);
+    if (exists) {
+      updated = apps.map((a) => (a.id === savedItem.id ? savedItem : a));
+    } else {
+      updated = [savedItem, ...apps];
+    }
+    persistApps(updated);
+    setIsModalOpen(false);
+    setEditingApp(null);
+  };
+
+  // Delete app handler
+  const handleDeleteApp = (id: string) => {
+    const updated = apps.filter((a) => a.id !== id);
+    persistApps(updated);
+  };
+
+  // Reset defaults handler
+  const handleResetDefaults = () => {
+    if (window.confirm(getTranslation(lang, 'confirmReset'))) {
+      persistApps(DEFAULT_APPS);
+    }
+  };
+
+  // Filtered apps computation
   const filteredApps = useMemo(() => {
-    return apps.filter(app => {
-      const matchesCategory = activeCategory === 'All' || app.category === activeCategory;
-      const q = searchQuery.toLowerCase().trim();
-      const matchesSearch = 
-        !q ||
-        app.name.toLowerCase().includes(q) ||
-        app.url.toLowerCase().includes(q) ||
-        app.category.toLowerCase().includes(q) ||
-        (app.description && app.description.toLowerCase().includes(q));
-
-      return matchesCategory && matchesSearch;
+    return apps.filter((app) => {
+      const matchesSearch =
+        app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.url.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCat =
+        selectedCategory === 'All' || app.category === selectedCategory;
+      return matchesSearch && matchesCat;
     });
-  }, [apps, activeCategory, searchQuery]);
+  }, [apps, searchQuery, selectedCategory]);
 
-  // Strict In-App Embed Viewer
-  if (activeEmbedApp) {
-    return (
-      <EmbedViewer
-        app={activeEmbedApp}
-        language={language}
-        onBackToLauncher={() => {
-          triggerHaptic('selection');
-          setActiveEmbedApp(null);
-        }}
-      />
-    );
-  }
+  const categories = ['All', 'Social', 'Work', 'Tools', 'Media', 'Other'];
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--tg-theme-bg-color,#17212b)] text-[var(--tg-theme-text-color,#ffffff)] antialiased">
-      {/* Clean Header */}
+    <div className="min-h-screen bg-[#17212b] text-white flex flex-col">
+      {/* Header */}
       <Header
-        user={currentUser}
-        theme={theme}
-        language={language}
-        onToggleLanguage={handleToggleLanguage}
-        onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-        onOpenAddModal={() => {
+        lang={lang}
+        onLanguageChange={handleLanguageChange}
+        onAddClick={() => {
           setEditingApp(null);
-          setIsAddModalOpen(true);
+          setIsModalOpen(true);
         }}
         onResetDefaults={handleResetDefaults}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        totalApps={apps.length}
+        user={user}
+        syncState={syncState}
       />
 
-      {/* Category Tabs */}
-      <div className="bg-[var(--tg-theme-bg-color,#17212b)] border-b border-[var(--tg-theme-secondary-bg-color,#232e3c)] px-4 py-2 overflow-x-auto no-scrollbar">
-        <div className="max-w-4xl mx-auto flex items-center gap-1.5 min-w-max">
-          {CATEGORY_TABS.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => {
-                triggerHaptic('selection');
-                setActiveCategory(cat);
-              }}
-              className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                activeCategory === cat
-                  ? 'bg-[var(--tg-theme-button-color,#2b73bc)] text-[var(--tg-theme-button-text-color,#ffffff)] shadow-sm'
-                  : 'bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-[var(--tg-theme-hint-color,#708499)] hover:text-white'
-              }`}
-            >
-              {t.categories[cat] || cat}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Main Container */}
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-4 pb-12">
+        {/* PWA Install Banner */}
+        <PWAInstallButton lang={lang} />
 
-      {/* Main Apps Grid */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-4">
+        {/* Search & Category Filter */}
+        <div className="space-y-3 mb-5">
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={getTranslation(lang, 'searchPlaceholder')}
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#242f3d] border border-white/5 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-[#2481cc] shadow-inner"
+            />
+          </div>
+
+          {/* Categories Pill Bar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {categories.map((cat) => {
+              const label =
+                cat === 'All'
+                  ? getTranslation(lang, 'allCategories')
+                  : translations[lang][`category${cat as 'Social'}` as keyof typeof translations.en] || cat;
+              const isActive = selectedCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    hapticImpact('light');
+                    setSelectedCategory(cat);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                    isActive
+                      ? 'bg-[#2481cc] text-white shadow-sm'
+                      : 'bg-[#242f3d] text-gray-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Apps Grid */}
         {filteredApps.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {filteredApps.map((app) => (
               <AppCard
                 key={app.id}
                 app={app}
-                language={language}
-                onLaunchEmbed={handleLaunchEmbed}
+                lang={lang}
+                onLaunch={handleLaunchApp}
                 onEdit={(item) => {
                   setEditingApp(item);
-                  setIsAddModalOpen(true);
+                  setIsModalOpen(true);
                 }}
-                onDelete={(appId) => setDeleteConfirmAppId(appId)}
+                onDelete={handleDeleteApp}
               />
             ))}
           </div>
         ) : (
-          <div className="py-16 text-center space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-[var(--tg-theme-hint-color,#708499)] flex items-center justify-center mx-auto">
-              <Compass className="w-6 h-6" />
+          <div className="py-16 text-center text-gray-400">
+            <div className="w-12 h-12 rounded-2xl bg-[#242f3d] flex items-center justify-center mx-auto mb-3 text-[#64b5f6]">
+              <Sparkles className="w-6 h-6" />
             </div>
-            <h3 className="font-semibold text-sm">
-              {t.empty.title}
-            </h3>
-            <p className="text-xs text-[var(--tg-theme-hint-color,#708499)]">
-              {searchQuery ? `${t.empty.noMatches}` : t.empty.noMatches}
-            </p>
-            <div className="pt-2 flex justify-center gap-2">
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="px-3 py-1.5 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)] text-xs text-sky-400 font-semibold"
-                >
-                  {t.empty.clearSearch}
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setEditingApp(null);
-                  setIsAddModalOpen(true);
-                }}
-                className="px-4 py-1.5 rounded-xl bg-[var(--tg-theme-button-color,#2b73bc)] text-white text-xs font-semibold"
-              >
-                {t.empty.addNew}
-              </button>
-            </div>
+            <p className="text-sm font-medium">{getTranslation(lang, 'noAppsFound')}</p>
           </div>
         )}
-      </main>
 
-      {/* Delete Confirmation Modal */}
-      {deleteConfirmAppId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl bg-[var(--tg-theme-bg-color,#17212b)] border border-[var(--tg-theme-secondary-bg-color,#232e3c)] p-5 text-[var(--tg-theme-text-color,#ffffff)] shadow-2xl">
-            <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mb-3">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-sm mb-1">
-              {t.deleteModal.title}
-            </h3>
-            <p className="text-xs text-[var(--tg-theme-hint-color,#708499)] mb-4">
-              {t.deleteModal.message}
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setDeleteConfirmAppId(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--tg-theme-hint-color,#708499)] hover:text-white"
-              >
-                {t.deleteModal.cancel}
-              </button>
-              <button
-                onClick={() => handleDeleteApp(deleteConfirmAppId)}
-                className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold transition-colors"
-              >
-                {t.deleteModal.confirm}
-              </button>
-            </div>
+        {/* Footer info: Direct device connection & ultra-low RAM footprint indicator */}
+        <div className="mt-8 pt-4 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between text-[11px] text-gray-500 gap-2">
+          <span>{getTranslation(lang, 'tagline')}</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-md font-mono">
+              ⚡ Direct Connection
+            </span>
+            <span className="inline-flex items-center gap-1 bg-[#2481cc]/10 text-[#64b5f6] px-2 py-0.5 rounded-md font-mono">
+              PWA Ready
+            </span>
           </div>
         </div>
-      )}
+      </main>
+
+      {/* Launch Credentials & Direct Open Sheet */}
+      <LaunchModal
+        app={launchingApp}
+        lang={lang}
+        onClose={() => setLaunchingApp(null)}
+      />
 
       {/* Add / Edit App Modal */}
       <AddEditAppModal
-        isOpen={isAddModalOpen}
-        language={language}
+        isOpen={isModalOpen}
+        editingApp={editingApp}
+        lang={lang}
+        onSave={handleSaveApp}
         onClose={() => {
-          setIsAddModalOpen(false);
+          setIsModalOpen(false);
           setEditingApp(null);
         }}
-        onSave={handleSaveApp}
-        editingApp={editingApp}
       />
-
-      {/* Lightweight Floating Toast */}
-      {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--tg-theme-secondary-bg-color,#232e3c)]/95 backdrop-blur-md text-white text-xs font-medium shadow-xl border border-white/10 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
     </div>
   );
 }

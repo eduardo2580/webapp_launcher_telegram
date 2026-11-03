@@ -1,6 +1,6 @@
 {
-  "name": "Telegram Mini App Web Launcher",
-  "description": "Production-ready Telegram Mini App launcher with dashboard, embed viewer, app manager, bot webhook controller, and initData verification.",
+  "name": "Telegram Web App Launcher PWA",
+  "description": "Ultra-lightweight Telegram Mini App and PWA Launcher with Telegram Cloud Storage sync and in-app embed viewer.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

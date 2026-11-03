@@ -6,235 +6,256 @@ declare global {
       WebApp?: {
         initData: string;
         initDataUnsafe: {
-          query_id?: string;
           user?: TelegramUser;
-          auth_date?: number;
+          query_id?: string;
+          auth_date?: string;
           hash?: string;
-          start_param?: string;
         };
         version: string;
         platform: string;
         colorScheme: 'light' | 'dark';
-        themeParams: {
-          bg_color?: string;
-          text_color?: string;
-          hint_color?: string;
-          link_color?: string;
-          button_color?: string;
-          button_text_color?: string;
-          secondary_bg_color?: string;
-        };
+        themeParams: Record<string, string>;
         isExpanded: boolean;
         viewportHeight: number;
         viewportStableHeight: number;
         headerColor: string;
         backgroundColor: string;
-        BackButton: {
+        isVersionAtLeast: (version: string) => boolean;
+        ready: () => void;
+        expand: () => void;
+        close: () => void;
+        enableClosingConfirmation?: () => void;
+        openLink: (url: string, options?: { try_instant_view?: boolean; try_browser?: boolean }) => void;
+        openTelegramLink: (url: string) => void;
+        BackButton?: {
           isVisible: boolean;
           show: () => void;
           hide: () => void;
           onClick: (cb: () => void) => void;
           offClick: (cb: () => void) => void;
         };
-        MainButton: {
+        MainButton?: {
           text: string;
           color: string;
           textColor: string;
           isVisible: boolean;
           isActive: boolean;
-          isProgressVisible: boolean;
+          show: () => void;
+          hide: () => void;
           setText: (text: string) => void;
           onClick: (cb: () => void) => void;
           offClick: (cb: () => void) => void;
-          show: () => void;
-          hide: () => void;
-          enable: () => void;
-          disable: () => void;
-          showProgress: (leaveActive?: boolean) => void;
-          hideProgress: () => void;
         };
-        HapticFeedback: {
+        HapticFeedback?: {
           impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
           notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
           selectionChanged: () => void;
         };
         CloudStorage?: {
-          setItem: (key: string, value: string, callback?: (err: Error | null, stored?: boolean) => void) => void;
-          getItem: (key: string, callback: (err: Error | null, value?: string) => void) => void;
-          getItems: (keys: string[], callback: (err: Error | null, values?: Record<string, string>) => void) => void;
-          removeItem: (key: string, callback?: (err: Error | null, removed?: boolean) => void) => void;
-          removeItems: (keys: string[], callback?: (err: Error | null, removed?: boolean) => void) => void;
-          getKeys: (callback: (err: Error | null, keys?: string[]) => void) => void;
+          setItem: (key: string, value: string, callback?: (err: Error | null, success: boolean) => void) => void;
+          getItem: (key: string, callback: (err: Error | null, value: string) => void) => void;
+          getItems: (keys: string[], callback: (err: Error | null, values: Record<string, string>) => void) => void;
+          removeItem: (key: string, callback?: (err: Error | null, success: boolean) => void) => void;
+          getKeys: (callback: (err: Error | null, keys: string[]) => void) => void;
         };
-        isVersionAtLeast?: (version: string) => boolean;
-        expand: () => void;
-        close: () => void;
-        ready: () => void;
-        openLink: (url: string, options?: { try_instant_view?: boolean }) => void;
-        openTelegramLink: (url: string) => void;
-        setHeaderColor: (color: string) => void;
-        setBackgroundColor: (color: string) => void;
-        enableClosingConfirmation: () => void;
-        onEvent: (eventType: string, eventHandler: () => void) => void;
-        offEvent: (eventType: string, eventHandler: () => void) => void;
-        sendData: (data: string) => void;
       };
     };
   }
 }
 
-export function isTelegramEnv(): boolean {
-  if (typeof window === 'undefined') return false;
-  return Boolean(
-    window.Telegram?.WebApp &&
-    (window.Telegram.WebApp.initData || window.Telegram.WebApp.initDataUnsafe?.user)
-  );
-}
-
 export function getTelegramWebApp() {
-  if (typeof window === 'undefined') return undefined;
-  return window.Telegram?.WebApp;
-}
-
-export function getTelegramUser(): TelegramUser | null {
-  const tg = getTelegramWebApp();
-  if (tg?.initDataUnsafe?.user) {
-    return tg.initDataUnsafe.user;
+  if (typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp) {
+    return window.Telegram.WebApp;
   }
   return null;
 }
 
-export function getInitDataString(): string {
-  const tg = getTelegramWebApp();
-  return tg?.initData || '';
+export function isTelegramWebApp(): boolean {
+  return !!getTelegramWebApp();
 }
 
-export function initTelegramApp() {
+/**
+ * Initialize Telegram Mini App UI according to official TMA guidelines
+ */
+export function initTelegramUI() {
   const tg = getTelegramWebApp();
-  if (!tg) return;
-
-  try {
-    tg.ready();
-    tg.expand();
-    tg.enableClosingConfirmation();
-  } catch (err) {
-    console.warn('Could not fully initialize Telegram WebApp SDK:', err);
+  if (tg) {
+    try {
+      tg.ready();
+      tg.expand();
+      if (typeof tg.enableClosingConfirmation === 'function') {
+        tg.enableClosingConfirmation();
+      }
+    } catch (e) {
+      console.warn('Telegram WebApp init notice:', e);
+    }
   }
 }
 
-export function triggerHaptic(
-  type: 'light' | 'medium' | 'heavy' | 'selection' | 'success' | 'warning' | 'error' = 'light'
-) {
+export function getTelegramUser(): TelegramUser | null {
   const tg = getTelegramWebApp();
-  if (!tg?.HapticFeedback) {
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      if (type === 'light' || type === 'selection') navigator.vibrate(10);
-      else if (type === 'medium') navigator.vibrate(25);
-      else if (type === 'heavy' || type === 'error') navigator.vibrate([30, 40, 30]);
-    }
-    return;
-  }
-
-  try {
-    if (type === 'selection') {
-      tg.HapticFeedback.selectionChanged();
-    } else if (type === 'success' || type === 'warning' || type === 'error') {
-      tg.HapticFeedback.notificationOccurred(type);
-    } else {
-      tg.HapticFeedback.impactOccurred(type);
-    }
-  } catch {}
+  return tg?.initDataUnsafe?.user || null;
 }
 
-// ================= Safe Telegram Cloud Storage Helpers =================
-// Telegram added CloudStorage in Bot API 6.9. Calling it in version 6.0 causes:
-// "[Telegram.WebApp] CloudStorage is not supported in version 6.0"
-// We verify version compatibility with isVersionAtLeast('6.9') before invoking.
-
-export function isCloudStorageAvailable(): boolean {
+/**
+ * Launches external web app / social media strictly using the device's native internet connection
+ * and Telegram's official In-App Browser (SFSafariViewController / Chrome Custom Tabs).
+ * This eliminates iframe X-Frame-Options blocks, enables full logins, cookies, and Passkeys.
+ */
+export function launchExternalApp(url: string) {
   const tg = getTelegramWebApp();
-  if (!tg?.CloudStorage) return false;
 
-  try {
-    // 1. Check official isVersionAtLeast
-    if (typeof tg.isVersionAtLeast === 'function') {
-      return tg.isVersionAtLeast('6.9');
-    }
-
-    // 2. Parse version string fallback
-    if (tg.version) {
-      const parts = tg.version.split('.').map(Number);
-      if (parts[0] > 6 || (parts[0] === 6 && parts[1] >= 9)) {
-        return true;
+  // If URL is a telegram link
+  if (url.startsWith('https://t.me/') || url.startsWith('tg://')) {
+    if (tg?.openTelegramLink) {
+      try {
+        tg.openTelegramLink(url);
+        return;
+      } catch {
+        // Fallback below
       }
     }
-  } catch {}
+  }
 
-  return false;
-}
-
-export function cloudStorageSetItem(key: string, value: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    // Always sync locally first for instant availability
+  // Official Telegram WebApp openLink
+  if (tg && typeof tg.openLink === 'function') {
     try {
-      localStorage.setItem(key, value);
-    } catch {}
-
-    // Only attempt Telegram CloudStorage if version is 6.9+
-    if (isCloudStorageAvailable()) {
-      const tg = getTelegramWebApp();
-      try {
-        tg?.CloudStorage?.setItem(key, value, (err, stored) => {
-          resolve(!err && (stored ?? true));
-        });
-        return;
-      } catch {}
+      // In Bot API 6.4+, openLink uses Telegram's in-app browser with device connection
+      tg.openLink(url, { try_instant_view: false });
+      return;
+    } catch (err) {
+      console.warn('Telegram openLink fallback:', err);
     }
+  }
 
-    resolve(true);
-  });
+  // PWA / Browser fallback: opens in new window/tab using device's connection
+  try {
+    const newWin = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!newWin) {
+      window.location.href = url;
+    }
+  } catch {
+    window.location.href = url;
+  }
 }
 
-export function cloudStorageGetItem(key: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    // Read local cache immediately
-    const localVal = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+export function hapticImpact(style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft' = 'light') {
+  const tg = getTelegramWebApp();
+  if (tg?.HapticFeedback) {
+    try {
+      tg.HapticFeedback.impactOccurred(style);
+    } catch {
+      // Ignore in non-TMA
+    }
+  }
+}
 
-    // Only query Telegram CloudStorage if version is 6.9+
-    if (isCloudStorageAvailable()) {
-      const tg = getTelegramWebApp();
+export function hapticNotification(type: 'error' | 'success' | 'warning' = 'success') {
+  const tg = getTelegramWebApp();
+  if (tg?.HapticFeedback) {
+    try {
+      tg.HapticFeedback.notificationOccurred(type);
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+export function setTelegramBackButton(visible: boolean, onClickHandler?: () => void) {
+  const tg = getTelegramWebApp();
+  if (tg?.BackButton) {
+    try {
+      if (visible && onClickHandler) {
+        tg.BackButton.show();
+        tg.BackButton.onClick(onClickHandler);
+      } else {
+        tg.BackButton.hide();
+      }
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
+ * Checks whether Telegram CloudStorage API is supported.
+ * CRITICAL: Telegram Bot API version 6.9+ is strictly required.
+ */
+export function isCloudStorageAvailable(): boolean {
+  const tg = getTelegramWebApp();
+  if (!tg || !tg.CloudStorage) return false;
+  try {
+    return typeof tg.isVersionAtLeast === 'function' && tg.isVersionAtLeast('6.9');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safe CloudStorage getItem with fallback to localStorage.
+ */
+export async function cloudStorageGetItem(key: string): Promise<string | null> {
+  const tg = getTelegramWebApp();
+
+  if (isCloudStorageAvailable() && tg?.CloudStorage) {
+    return new Promise((resolve) => {
       try {
-        tg?.CloudStorage?.getItem(key, (err, cloudVal) => {
-          if (!err && cloudVal !== undefined && cloudVal !== null) {
-            resolve(cloudVal);
+        tg.CloudStorage!.getItem(key, (err, val) => {
+          if (err || !val) {
+            resolve(localStorage.getItem(key));
           } else {
-            resolve(localVal);
+            resolve(val);
           }
         });
-        return;
-      } catch {}
-    }
+      } catch {
+        resolve(localStorage.getItem(key));
+      }
+    });
+  }
 
-    resolve(localVal);
-  });
+  return localStorage.getItem(key);
 }
 
-export function cloudStorageRemoveItem(key: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    try {
-      localStorage.removeItem(key);
-    } catch {}
+/**
+ * Safe CloudStorage setItem with fallback to localStorage.
+ */
+export async function cloudStorageSetItem(key: string, value: string): Promise<boolean> {
+  localStorage.setItem(key, value);
 
-    if (isCloudStorageAvailable()) {
-      const tg = getTelegramWebApp();
+  const tg = getTelegramWebApp();
+  if (isCloudStorageAvailable() && tg?.CloudStorage) {
+    return new Promise((resolve) => {
       try {
-        tg?.CloudStorage?.removeItem(key, (err, removed) => {
-          resolve(!err && (removed ?? true));
+        tg.CloudStorage!.setItem(key, value, (err, success) => {
+          resolve(!err && !!success);
         });
-        return;
-      } catch {}
-    }
+      } catch {
+        resolve(false);
+      }
+    });
+  }
 
-    resolve(true);
-  });
+  return true;
+}
+
+/**
+ * Safe CloudStorage removeItem with fallback to localStorage.
+ */
+export async function cloudStorageRemoveItem(key: string): Promise<boolean> {
+  localStorage.removeItem(key);
+
+  const tg = getTelegramWebApp();
+  if (isCloudStorageAvailable() && tg?.CloudStorage) {
+    return new Promise((resolve) => {
+      try {
+        tg.CloudStorage!.removeItem(key, (err, success) => {
+          resolve(!err && !!success);
+        });
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+
+  return true;
 }
