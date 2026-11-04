@@ -26,7 +26,11 @@ app.get("/api/health", (_req, res) => {
   res.status(200).json({
     status: "ok",
     timestamp: Date.now(),
-    env: isProd ? "production" : "development"
+    env: isProd ? "production" : "development",
+    telegramBot: {
+      status: telegramBotStatus,
+      configured: Boolean(BOT_TOKEN)
+    }
   });
 });
 app.get("/api/network-info", (req, res) => {
@@ -105,6 +109,8 @@ var pendingAppAdds = /* @__PURE__ */ new Map();
 var BOT_DATA_DIR = path.resolve(process.env.BOT_DATA_DIR || path.join(__dirname, "data"));
 var BOT_APPS_PATH = path.join(BOT_DATA_DIR, "telegram-apps.json");
 var botAppsWriteQueue = Promise.resolve();
+var chatLanguages = /* @__PURE__ */ new Map();
+var telegramBotStatus = BOT_TOKEN ? "starting" : "disabled";
 var BOT_COPY = {
   en: {
     title: "\u{1F4F1} <b>Your apps</b>",
@@ -118,6 +124,31 @@ var BOT_COPY = {
     addSuccess: "\u2705 Added {title}.",
     addCancelled: "Adding an app was cancelled.",
     addPrivateOnly: "Open a private chat with the bot to add an app.",
+    help: "I keep your web apps organized and ready to open from Telegram.\n\n/start or /apps \u2014 browse your launcher\n/open <name> or /search <name> \u2014 find and open an app\n/add \u2014 save an HTTPS app link\n/remove \u2014 remove an app you added\n/language \u2014 change the bot language\n/cancel \u2014 stop adding an app",
+    unknown: "I can help you launch and organize web apps. Use /help to see commands.",
+    unsupported: "I can only process text links right now. Use /help to see what I can do.",
+    nothingToCancel: "There is no active action to cancel.",
+    searchPrompt: "Type an app name after /search.",
+    noMatches: "No matching apps found. Use /apps to browse your launcher.",
+    matches: "Search results",
+    removeApp: "\u{1F5D1} Remove apps",
+    removePrompt: "Choose an app to remove:",
+    removeEmpty: "You have not added any apps yet.",
+    removed: "\u2705 Removed {title}.",
+    back: "\u21A9\uFE0F Back to apps",
+    language: "Choose your language:",
+    languageSaved: "Language updated.",
+    commands: {
+      start: "Open your web app launcher",
+      apps: "Show your web apps",
+      add: "Add an HTTPS web app link",
+      open: "Open an app or show the launcher",
+      search: "Find an app by name",
+      remove: "Remove an app you added",
+      language: "Change the bot language",
+      help: "Show launcher help",
+      cancel: "Cancel the current action"
+    },
     page: "Page",
     apps: "apps",
     empty: "No apps in this category.",
@@ -128,14 +159,39 @@ var BOT_COPY = {
     title: "\u{1F4F1} <b>Tus aplicaciones</b>",
     description: "Elige una categor\xEDa y toca una aplicaci\xF3n para abrirla en Telegram.",
     addApp: "\u2795 Agregar aplicaci\xF3n",
-    addPrompt: "Env\xEDa un enlace HTTPS para agregarlo. Env\xEDa /cancelar para detener.",
-    addInvalid: "El enlace HTTPS no es v\xE1lido. Int\xE9ntalo de nuevo o env\xEDa /cancelar.",
+    addPrompt: "Env\xEDa un enlace HTTPS para agregarlo. Env\xEDa /cancel para detener.",
+    addInvalid: "El enlace HTTPS no es v\xE1lido. Int\xE9ntalo de nuevo o env\xEDa /cancel.",
     addDuplicate: "Ese enlace ya est\xE1 en tu lista.",
     addLimit: "La lista de aplicaciones est\xE1 llena.",
     addFailed: "No se pudo guardar la aplicaci\xF3n. Int\xE9ntalo de nuevo.",
     addSuccess: "\u2705 Se agreg\xF3 {title}.",
     addCancelled: "Se cancel\xF3 la adici\xF3n.",
     addPrivateOnly: "Abre un chat privado con el bot para agregar una aplicaci\xF3n.",
+    help: "Organizo tus aplicaciones web para abrirlas desde Telegram.\n\n/start o /apps \u2014 explorar el lanzador\n/open <nombre> o /search <nombre> \u2014 buscar y abrir una aplicaci\xF3n\n/add \u2014 guardar un enlace HTTPS\n/remove \u2014 quitar una aplicaci\xF3n agregada\n/language \u2014 cambiar el idioma\n/cancel \u2014 cancelar la adici\xF3n",
+    unknown: "Puedo ayudarte a abrir y organizar aplicaciones web. Usa /help para ver los comandos.",
+    unsupported: "Por ahora solo puedo procesar enlaces de texto. Usa /help para ver los comandos.",
+    nothingToCancel: "No hay ninguna acci\xF3n pendiente para cancelar.",
+    searchPrompt: "Escribe el nombre despu\xE9s de /search.",
+    noMatches: "No se encontraron aplicaciones. Usa /apps para explorar el lanzador.",
+    matches: "Resultados de b\xFAsqueda",
+    removeApp: "\u{1F5D1} Quitar aplicaciones",
+    removePrompt: "Elige una aplicaci\xF3n para quitar:",
+    removeEmpty: "A\xFAn no has agregado aplicaciones.",
+    removed: "\u2705 Se quit\xF3 {title}.",
+    back: "\u21A9\uFE0F Volver a las aplicaciones",
+    language: "Elige tu idioma:",
+    languageSaved: "Idioma actualizado.",
+    commands: {
+      start: "Abrir el lanzador de aplicaciones web",
+      apps: "Mostrar tus aplicaciones web",
+      add: "Agregar un enlace HTTPS",
+      open: "Abrir una aplicaci\xF3n o ver el lanzador",
+      search: "Buscar una aplicaci\xF3n por nombre",
+      remove: "Quitar una aplicaci\xF3n agregada",
+      language: "Cambiar el idioma del bot",
+      help: "Ver ayuda del lanzador",
+      cancel: "Cancelar la acci\xF3n actual"
+    },
     page: "P\xE1gina",
     apps: "aplicaciones",
     empty: "No hay aplicaciones en esta categor\xEDa.",
@@ -146,14 +202,39 @@ var BOT_COPY = {
     title: "\u{1F4F1} <b>Seus aplicativos</b>",
     description: "Escolha uma categoria e toque em um aplicativo para abri-lo no Telegram.",
     addApp: "\u2795 Adicionar aplicativo",
-    addPrompt: "Envie um link HTTPS para adicion\xE1-lo. Envie /cancelar para parar.",
-    addInvalid: "Esse link HTTPS n\xE3o \xE9 v\xE1lido. Tente novamente ou envie /cancelar.",
+    addPrompt: "Envie um link HTTPS para adicion\xE1-lo. Envie /cancel para parar.",
+    addInvalid: "Esse link HTTPS n\xE3o \xE9 v\xE1lido. Tente novamente ou envie /cancel.",
     addDuplicate: "Esse link j\xE1 est\xE1 na sua lista.",
     addLimit: "Sua lista de aplicativos est\xE1 cheia.",
     addFailed: "N\xE3o foi poss\xEDvel salvar o aplicativo. Tente novamente.",
     addSuccess: "\u2705 {title} foi adicionado.",
     addCancelled: "Adi\xE7\xE3o cancelada.",
     addPrivateOnly: "Abra uma conversa privada com o bot para adicionar um aplicativo.",
+    help: "Organizo seus aplicativos web para abrir pelo Telegram.\n\n/start ou /apps \u2014 explorar o lan\xE7ador\n/open <nome> ou /search <nome> \u2014 buscar e abrir um aplicativo\n/add \u2014 salvar um link HTTPS\n/remove \u2014 remover um aplicativo adicionado\n/language \u2014 alterar o idioma\n/cancel \u2014 cancelar a adi\xE7\xE3o",
+    unknown: "Posso ajudar a abrir e organizar aplicativos web. Use /help para ver os comandos.",
+    unsupported: "Por enquanto, s\xF3 consigo processar links em texto. Use /help para ver os comandos.",
+    nothingToCancel: "N\xE3o h\xE1 nenhuma a\xE7\xE3o em andamento para cancelar.",
+    searchPrompt: "Digite o nome do app depois de /search.",
+    noMatches: "Nenhum app encontrado. Use /apps para explorar o lan\xE7ador.",
+    matches: "Resultados da busca",
+    removeApp: "\u{1F5D1} Remover aplicativos",
+    removePrompt: "Escolha um aplicativo para remover:",
+    removeEmpty: "Voc\xEA ainda n\xE3o adicionou aplicativos.",
+    removed: "\u2705 {title} foi removido.",
+    back: "\u21A9\uFE0F Voltar aos aplicativos",
+    language: "Escolha seu idioma:",
+    languageSaved: "Idioma atualizado.",
+    commands: {
+      start: "Abrir o lan\xE7ador de aplicativos web",
+      apps: "Mostrar seus aplicativos web",
+      add: "Adicionar um link HTTPS",
+      open: "Abrir um aplicativo ou mostrar o lan\xE7ador",
+      search: "Buscar um aplicativo pelo nome",
+      remove: "Remover um aplicativo adicionado",
+      language: "Alterar o idioma do bot",
+      help: "Ver ajuda do lan\xE7ador",
+      cancel: "Cancelar a a\xE7\xE3o atual"
+    },
     page: "P\xE1gina",
     apps: "aplicativos",
     empty: "N\xE3o h\xE1 aplicativos nesta categoria.",
@@ -178,31 +259,51 @@ function normalizeBotApps(values, httpsOnly = false) {
       return [];
     }
     if (!["http:", "https:"].includes(parsedUrl.protocol) || httpsOnly && parsedUrl.protocol !== "https:" || parsedUrl.username || parsedUrl.password) return [];
+    const appChatId = typeof value.chatId === "number" && Number.isSafeInteger(value.chatId) ? value.chatId : void 0;
     return [{
       id,
       title: title.trim(),
       url: parsedUrl.toString(),
-      category: APP_CATEGORIES.includes(category) ? category : "Other"
+      category: APP_CATEGORIES.includes(category) ? category : "Other",
+      ...appChatId !== void 0 ? { chatId: appChatId } : {}
     }];
   });
 }
-function getBotApps() {
+function getBotApps(chatId) {
   const seen = /* @__PURE__ */ new Set();
-  return [...normalizeBotApps(serverSyncedApps), ...telegramAddedApps].filter((item) => {
+  return [
+    ...normalizeBotApps(CORE_APPS),
+    ...telegramAddedApps.filter((item) => item.chatId === void 0 || item.chatId === chatId)
+  ].filter((item) => {
     const key = item.url.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   }).slice(0, 200);
 }
+function getChatAddedApps(chatId) {
+  return telegramAddedApps.filter((item) => item.chatId === void 0 || item.chatId === chatId);
+}
 async function loadTelegramAddedApps() {
   try {
     const content = await readFile(BOT_APPS_PATH, "utf8");
     const parsed = JSON.parse(content);
-    if (!Array.isArray(parsed)) {
-      throw new Error("Stored Telegram apps must be an array.");
+    if (Array.isArray(parsed)) {
+      telegramAddedApps = normalizeBotApps(parsed, true);
+      return;
     }
-    telegramAddedApps = normalizeBotApps(parsed, true);
+    if (!isRecord(parsed) || !Array.isArray(parsed.apps)) {
+      throw new Error("Stored Telegram app data must contain an apps array.");
+    }
+    telegramAddedApps = normalizeBotApps(parsed.apps, true);
+    if (isRecord(parsed.languages)) {
+      for (const [chatId, language] of Object.entries(parsed.languages)) {
+        const numericChatId = Number(chatId);
+        if (Number.isSafeInteger(numericChatId) && (language === "en" || language === "es" || language === "pt")) {
+          chatLanguages.set(numericChatId, language);
+        }
+      }
+    }
   } catch (error) {
     if (isRecord(error) && error.code === "ENOENT") return;
     throw error;
@@ -212,7 +313,11 @@ function persistTelegramAddedApps() {
   const write = botAppsWriteQueue.then(async () => {
     await mkdir(BOT_DATA_DIR, { recursive: true });
     const temporaryPath = `${BOT_APPS_PATH}.${randomUUID()}.tmp`;
-    await writeFile(temporaryPath, JSON.stringify(telegramAddedApps, null, 2), "utf8");
+    const data = {
+      apps: telegramAddedApps,
+      languages: Object.fromEntries(chatLanguages)
+    };
+    await writeFile(temporaryPath, JSON.stringify(data, null, 2), "utf8");
     await rename(temporaryPath, BOT_APPS_PATH);
   });
   botAppsWriteQueue = write.catch(() => void 0);
@@ -226,11 +331,6 @@ function parseHttpsAppUrl(value) {
   } catch {
     return null;
   }
-}
-function getAppMetadata() {
-  const existingUrls = new Set(normalizeBotApps(serverSyncedApps).map((item) => item.url.toLowerCase()));
-  const additions = telegramAddedApps.filter((item) => !existingUrls.has(item.url.toLowerCase())).map((item) => ({ ...item, icon: "", isCustom: true }));
-  return [...serverSyncedApps, ...additions];
 }
 function getBotLanguage(languageCode) {
   if (typeof languageCode !== "string") return "en";
@@ -247,9 +347,9 @@ function escapeHtml(value) {
     "'": "&#39;"
   })[character] || character);
 }
-function renderBotAppMenu(language, selectedCategory, requestedPage, allowMiniApps) {
+function renderBotAppMenu(chatId, language, selectedCategory, requestedPage) {
   const copy = BOT_COPY[language];
-  const apps = getBotApps();
+  const apps = getBotApps(chatId);
   const categories = [
     "All",
     ...APP_CATEGORIES.filter((category) => apps.some((app2) => app2.category === category))
@@ -277,7 +377,7 @@ function renderBotAppMenu(language, selectedCategory, requestedPage, allowMiniAp
   for (let index = 0; index < visibleApps.length; index += 2) {
     keyboard.push(visibleApps.slice(index, index + 2).map((app2) => ({
       text: `\u{1F310} ${Array.from(app2.title).slice(0, 58).join("")}`,
-      ...allowMiniApps && app2.url.startsWith("https:") ? { web_app: { url: app2.url } } : { url: app2.url }
+      url: app2.url
     })));
   }
   if (pageCount > 1) {
@@ -288,11 +388,22 @@ function renderBotAppMenu(language, selectedCategory, requestedPage, allowMiniAp
     ]);
   }
   keyboard.push([{ text: copy.addApp, callback_data: "launcher:add" }]);
+  keyboard.push([{ text: `\u{1F310} ${copy.language}`, callback_data: "launcher:languages" }]);
+  if (getChatAddedApps(chatId).length) {
+    keyboard.push([{ text: copy.removeApp, callback_data: "launcher:remove-page:0" }]);
+  }
   return { text, reply_markup: { inline_keyboard: keyboard } };
 }
 function parseBotMenuCallback(data) {
   if (typeof data !== "string" || data.length > 64) return null;
   if (data === "launcher:add") return { action: "add" };
+  if (data === "launcher:languages") return { action: "languages" };
+  const languageMatch = /^launcher:language:(en|es|pt)$/.exec(data);
+  if (languageMatch) return { action: "language", language: languageMatch[1] };
+  const removeMatch = /^launcher:remove:(telegram-[a-f0-9-]{36})$/i.exec(data);
+  if (removeMatch) return { action: "remove", id: removeMatch[1] };
+  const removePageMatch = /^launcher:remove-page:(\d{1,3})$/.exec(data);
+  if (removePageMatch) return { action: "remove-page", page: Number(removePageMatch[1]) };
   const categoryMatch = /^launcher:category:(All|Social|Work|Tools|Media|Other)$/.exec(data);
   if (categoryMatch) return { action: "menu", category: categoryMatch[1], page: 0 };
   const pageMatch = /^launcher:page:(All|Social|Work|Tools|Media|Other):(\d{1,4})$/.exec(data);
@@ -300,6 +411,90 @@ function parseBotMenuCallback(data) {
     return { action: "menu", category: pageMatch[1], page: Number(pageMatch[2]) };
   }
   return null;
+}
+function renderBotRemoveMenu(chatId, language, requestedPage, notice) {
+  const copy = BOT_COPY[language];
+  const apps = getChatAddedApps(chatId);
+  if (!apps.length) {
+    return {
+      text: [notice, copy.removeEmpty].filter(Boolean).join("\n"),
+      reply_markup: {
+        inline_keyboard: [[{ text: copy.back, callback_data: "launcher:category:All" }]]
+      }
+    };
+  }
+  const pageCount = Math.ceil(apps.length / BOT_PAGE_SIZE);
+  const page = Math.max(0, Math.min(Math.floor(requestedPage), pageCount - 1));
+  const start = page * BOT_PAGE_SIZE;
+  const keyboard = apps.slice(start, start + BOT_PAGE_SIZE).map((item) => [{
+    text: `\u{1F5D1} ${Array.from(item.title).slice(0, 50).join("")}`,
+    callback_data: `launcher:remove:${item.id}`
+  }]);
+  if (pageCount > 1) {
+    keyboard.push([
+      ...page > 0 ? [{ text: "\u25C0\uFE0F", callback_data: `launcher:remove-page:${page - 1}` }] : [],
+      { text: `${page + 1}/${pageCount}`, callback_data: `launcher:remove-page:${page}` },
+      ...page + 1 < pageCount ? [{ text: "\u25B6\uFE0F", callback_data: `launcher:remove-page:${page + 1}` }] : []
+    ]);
+  }
+  keyboard.push([{ text: copy.back, callback_data: "launcher:category:All" }]);
+  return {
+    text: [notice, copy.removePrompt].filter(Boolean).join("\n"),
+    reply_markup: { inline_keyboard: keyboard }
+  };
+}
+function renderBotLanguageMenu(language) {
+  const copy = BOT_COPY[language];
+  return {
+    text: copy.language,
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "\u{1F1FA}\u{1F1F8} English", callback_data: "launcher:language:en" },
+        { text: "\u{1F1EA}\u{1F1F8} Espa\xF1ol", callback_data: "launcher:language:es" },
+        { text: "\u{1F1E7}\u{1F1F7} Portugu\xEAs", callback_data: "launcher:language:pt" }
+      ], [{ text: copy.back, callback_data: "launcher:category:All" }]]
+    }
+  };
+}
+function findBotApps(chatId, query) {
+  const normalize = (value) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const normalizedQuery = normalize(query.trim()).slice(0, 100);
+  if (!normalizedQuery) return [];
+  return getBotApps(chatId).map((item) => {
+    const title = normalize(item.title);
+    const hostname = normalize(new URL(item.url).hostname.replace(/^www\./i, ""));
+    const rank = title === normalizedQuery || hostname === normalizedQuery ? 0 : title.startsWith(normalizedQuery) || hostname.startsWith(normalizedQuery) ? 1 : title.includes(normalizedQuery) || hostname.includes(normalizedQuery) ? 2 : -1;
+    return { item, rank };
+  }).filter(({ rank }) => rank >= 0).sort((left, right) => left.rank - right.rank).slice(0, BOT_PAGE_SIZE).map(({ item }) => item);
+}
+function renderBotSearchResults(chatId, query, language) {
+  const copy = BOT_COPY[language];
+  const results = findBotApps(chatId, query);
+  if (!results.length) {
+    return {
+      text: copy.noMatches,
+      reply_markup: {
+        inline_keyboard: [[{
+          text: copy.title.replace(/<\/?b>/g, ""),
+          callback_data: "launcher:category:All"
+        }]]
+      }
+    };
+  }
+  return {
+    text: `<b>${copy.matches}</b>
+${escapeHtml(query.trim())}`,
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: results.map((item) => [{
+        text: `\u{1F310} ${Array.from(item.title).slice(0, 58).join("")}`,
+        url: item.url
+      }])
+    }
+  };
+}
+function getChatLanguage(chatId, telegramLanguage) {
+  return chatLanguages.get(chatId) || getBotLanguage(telegramLanguage);
 }
 async function callTelegramApi(method, payload) {
   let response;
@@ -331,7 +526,7 @@ app.get("/api/apps", (_req, res) => {
     version: "1.2.0",
     syncedAt: Date.now(),
     source: "server",
-    apps: getAppMetadata()
+    apps: serverSyncedApps
   });
 });
 app.post("/api/apps/sync", (req, res) => {
@@ -343,7 +538,7 @@ app.post("/api/apps/sync", (req, res) => {
     status: "ok",
     syncedAt: Date.now(),
     clientTimestamp: clientTimestamp || null,
-    count: getBotApps().length
+    count: normalizeBotApps(serverSyncedApps).length
   });
 });
 async function handleTelegramUpdate(update) {
@@ -358,8 +553,8 @@ async function handleTelegramUpdate(update) {
       await callTelegramApi("answerCallbackQuery", { callback_query_id: callback.id });
       return;
     }
+    const language2 = getChatLanguage(chatId2, callback.from?.language_code);
     if (state.action === "add") {
-      const language2 = getBotLanguage(callback.from?.language_code);
       if (chat?.type !== "private") {
         await callTelegramApi("answerCallbackQuery", {
           callback_query_id: callback.id,
@@ -377,12 +572,106 @@ async function handleTelegramUpdate(update) {
       });
       return;
     }
+    if (state.action === "remove" || state.action === "remove-page") {
+      if (chat?.type !== "private") {
+        await callTelegramApi("answerCallbackQuery", {
+          callback_query_id: callback.id,
+          text: BOT_COPY[language2].addPrivateOnly,
+          show_alert: true
+        });
+        return;
+      }
+      await callTelegramApi("answerCallbackQuery", { callback_query_id: callback.id });
+      if (state.action === "remove-page") {
+        const menu4 = renderBotRemoveMenu(chatId2, language2, state.page);
+        await callTelegramApi("editMessageText", {
+          chat_id: chatId2,
+          message_id: messageId,
+          text: menu4.text,
+          reply_markup: menu4.reply_markup
+        });
+        return;
+      }
+      const appIndex = telegramAddedApps.findIndex((item) => item.id === state.id && (item.chatId === void 0 || item.chatId === chatId2));
+      if (appIndex < 0) {
+        const menu4 = renderBotRemoveMenu(chatId2, language2, 0);
+        await callTelegramApi("editMessageText", {
+          chat_id: chatId2,
+          message_id: messageId,
+          text: menu4.text,
+          reply_markup: menu4.reply_markup
+        });
+        return;
+      }
+      const [removedApp] = telegramAddedApps.splice(appIndex, 1);
+      try {
+        await persistTelegramAddedApps();
+      } catch (error) {
+        telegramAddedApps.splice(appIndex, 0, removedApp);
+        console.error("[Telegram Bot] Could not persist app removal:", error);
+        const menu4 = renderBotRemoveMenu(chatId2, language2, 0, BOT_COPY[language2].addFailed);
+        await callTelegramApi("editMessageText", {
+          chat_id: chatId2,
+          message_id: messageId,
+          text: menu4.text,
+          reply_markup: menu4.reply_markup
+        });
+        return;
+      }
+      const copy = BOT_COPY[language2];
+      const notice = copy.removed.replace("{title}", escapeHtml(removedApp.title));
+      const menu3 = renderBotRemoveMenu(chatId2, language2, 0, notice);
+      await callTelegramApi("editMessageText", {
+        chat_id: chatId2,
+        message_id: messageId,
+        text: menu3.text,
+        parse_mode: "HTML",
+        reply_markup: menu3.reply_markup
+      });
+      return;
+    }
+    if (state.action === "languages") {
+      await callTelegramApi("answerCallbackQuery", { callback_query_id: callback.id });
+      const menu3 = renderBotLanguageMenu(language2);
+      await callTelegramApi("editMessageText", {
+        chat_id: chatId2,
+        message_id: messageId,
+        text: menu3.text,
+        reply_markup: menu3.reply_markup
+      });
+      return;
+    }
+    if (state.action === "language") {
+      await callTelegramApi("answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: BOT_COPY[state.language].languageSaved
+      });
+      const previousLanguage = chatLanguages.get(chatId2);
+      chatLanguages.set(chatId2, state.language);
+      try {
+        await persistTelegramAddedApps();
+      } catch (error) {
+        if (previousLanguage) chatLanguages.set(chatId2, previousLanguage);
+        else chatLanguages.delete(chatId2);
+        console.error("[Telegram Bot] Could not persist language choice:", error);
+        return;
+      }
+      const menu3 = renderBotAppMenu(chatId2, state.language, "All", 0);
+      await callTelegramApi("editMessageText", {
+        chat_id: chatId2,
+        message_id: messageId,
+        text: menu3.text,
+        parse_mode: "HTML",
+        reply_markup: menu3.reply_markup
+      });
+      return;
+    }
     await callTelegramApi("answerCallbackQuery", { callback_query_id: callback.id });
     const menu2 = renderBotAppMenu(
-      getBotLanguage(callback.from?.language_code),
+      chatId2,
+      language2,
       state.category,
-      state.page,
-      callback.message?.chat?.type === "private"
+      state.page
     );
     await callTelegramApi("editMessageText", {
       chat_id: chatId2,
@@ -394,18 +683,27 @@ async function handleTelegramUpdate(update) {
     return;
   }
   const message = update.message;
-  if (!message?.chat?.id || typeof message.text !== "string") return;
-  const input = message.text.trim();
-  const command = input.split(/\s+/, 1)[0].split("@", 1)[0].toLowerCase();
+  if (!message?.chat?.id) return;
   const chatId = message.chat.id;
   const pendingAdd = pendingAppAdds.get(chatId);
-  const language = pendingAdd?.language || getBotLanguage(message.from?.language_code);
+  const language = pendingAdd?.language || getChatLanguage(chatId, message.from?.language_code);
+  if (typeof message.text !== "string") {
+    await callTelegramApi("sendMessage", {
+      chat_id: chatId,
+      text: pendingAdd ? BOT_COPY[language].addInvalid : BOT_COPY[language].unsupported,
+      reply_markup: pendingAdd ? { force_reply: true } : void 0
+    });
+    return;
+  }
+  const input = message.text.trim();
+  const command = input.split(/\s+/, 1)[0].split("@", 1)[0].toLowerCase();
+  const commandArgument = input.split(/\s+/).slice(1).join(" ").trim();
   if (pendingAdd && (command === "/cancel" || command === "/cancelar")) {
     pendingAppAdds.delete(chatId);
     await callTelegramApi("sendMessage", { chat_id: chatId, text: BOT_COPY[language].addCancelled });
     return;
   }
-  if (pendingAdd && command !== "/start" && command !== "/launcher") {
+  if (pendingAdd && !command.startsWith("/")) {
     const appUrl = parseHttpsAppUrl(input);
     if (!appUrl) {
       await callTelegramApi("sendMessage", {
@@ -415,7 +713,7 @@ async function handleTelegramUpdate(update) {
       });
       return;
     }
-    const apps = getBotApps();
+    const apps = getBotApps(chatId);
     if (apps.length >= 200) {
       pendingAppAdds.delete(chatId);
       await callTelegramApi("sendMessage", { chat_id: chatId, text: BOT_COPY[language].addLimit });
@@ -435,7 +733,8 @@ async function handleTelegramUpdate(update) {
       id: `telegram-${randomUUID()}`,
       title,
       url: normalizedUrl,
-      category: "Other"
+      category: "Other",
+      chatId
     };
     telegramAddedApps = [...telegramAddedApps, app2];
     try {
@@ -456,23 +755,145 @@ async function handleTelegramUpdate(update) {
       text: BOT_COPY[language].addSuccess.replace("{title}", escapeHtml(title)),
       parse_mode: "HTML"
     });
-    const menu2 = renderBotAppMenu(language, "Other", 0, true);
-    await callTelegramApi("editMessageText", {
+    const menu2 = renderBotAppMenu(chatId, language, "Other", 0);
+    if (pendingAdd.messageId !== void 0) {
+      await callTelegramApi("editMessageText", {
+        chat_id: chatId,
+        message_id: pendingAdd.messageId,
+        text: menu2.text,
+        parse_mode: "HTML",
+        reply_markup: menu2.reply_markup
+      });
+    } else {
+      await callTelegramApi("sendMessage", {
+        chat_id: chatId,
+        text: menu2.text,
+        parse_mode: "HTML",
+        reply_markup: menu2.reply_markup
+      });
+    }
+    return;
+  }
+  if (pendingAdd && command.startsWith("/")) pendingAppAdds.delete(chatId);
+  if (command === "/cancel" || command === "/cancelar") {
+    await callTelegramApi("sendMessage", {
       chat_id: chatId,
-      message_id: pendingAdd.messageId,
+      text: BOT_COPY[language].nothingToCancel
+    });
+    return;
+  }
+  if (command === "/add") {
+    if (message.chat.type !== "private") {
+      await callTelegramApi("sendMessage", {
+        chat_id: chatId,
+        text: BOT_COPY[language].addPrivateOnly
+      });
+      return;
+    }
+    pendingAppAdds.set(chatId, { language });
+    await callTelegramApi("sendMessage", {
+      chat_id: chatId,
+      text: BOT_COPY[language].addPrompt,
+      reply_markup: { force_reply: true }
+    });
+    return;
+  }
+  if (command === "/remove") {
+    if (message.chat.type !== "private") {
+      await callTelegramApi("sendMessage", {
+        chat_id: chatId,
+        text: BOT_COPY[language].addPrivateOnly
+      });
+      return;
+    }
+    const menu2 = renderBotRemoveMenu(chatId, language, 0);
+    await callTelegramApi("sendMessage", {
+      chat_id: chatId,
+      text: menu2.text,
+      reply_markup: menu2.reply_markup
+    });
+    return;
+  }
+  if (command === "/language") {
+    const menu2 = renderBotLanguageMenu(language);
+    await callTelegramApi("sendMessage", {
+      chat_id: chatId,
+      text: menu2.text,
+      reply_markup: menu2.reply_markup
+    });
+    return;
+  }
+  if (command === "/open" || command === "/search") {
+    if (!commandArgument && command === "/search") {
+      await callTelegramApi("sendMessage", {
+        chat_id: chatId,
+        text: BOT_COPY[language].searchPrompt
+      });
+      return;
+    }
+    if (commandArgument) {
+      const results = renderBotSearchResults(chatId, commandArgument, language);
+      await callTelegramApi("sendMessage", {
+        chat_id: chatId,
+        text: results.text,
+        ...results.parse_mode ? { parse_mode: results.parse_mode } : {},
+        reply_markup: results.reply_markup
+      });
+      return;
+    }
+    const menu2 = renderBotAppMenu(chatId, language, "All", 0);
+    await callTelegramApi("sendMessage", {
+      chat_id: chatId,
       text: menu2.text,
       parse_mode: "HTML",
       reply_markup: menu2.reply_markup
     });
     return;
   }
+  if (command === "/help") {
+    await callTelegramApi("sendMessage", {
+      chat_id: chatId,
+      text: BOT_COPY[language].help,
+      reply_markup: {
+        inline_keyboard: [[{
+          text: BOT_COPY[language].title.replace(/<\/?b>/g, ""),
+          callback_data: "launcher:category:All"
+        }]]
+      }
+    });
+    return;
+  }
   pendingAppAdds.delete(chatId);
-  if (command !== "/start" && command !== "/launcher") return;
+  if (!["/start", "/apps", "/launcher"].includes(command)) {
+    const naturalSearch = /^(?:open|launch|abrir|abre)\s+(.+)$/i.exec(input);
+    const results = naturalSearch ? findBotApps(chatId, naturalSearch[1]) : command.startsWith("/") ? [] : findBotApps(chatId, input);
+    if (results.length) {
+      const searchResults = renderBotSearchResults(chatId, naturalSearch?.[1] || input, language);
+      await callTelegramApi("sendMessage", {
+        chat_id: chatId,
+        text: searchResults.text,
+        parse_mode: searchResults.parse_mode,
+        reply_markup: searchResults.reply_markup
+      });
+      return;
+    }
+    await callTelegramApi("sendMessage", {
+      chat_id: chatId,
+      text: BOT_COPY[language].unknown,
+      reply_markup: {
+        inline_keyboard: [[{
+          text: BOT_COPY[language].title.replace(/<\/?b>/g, ""),
+          callback_data: "launcher:category:All"
+        }]]
+      }
+    });
+    return;
+  }
   const menu = renderBotAppMenu(
+    chatId,
     language,
     "All",
-    0,
-    message.chat.type === "private"
+    0
   );
   await callTelegramApi("sendMessage", {
     chat_id: message.chat.id,
@@ -492,14 +913,33 @@ app.post("/api/telegram/webhook", async (req, res) => {
 });
 async function startTelegramPolling() {
   if (!BOT_TOKEN) return;
-  try {
-    await callTelegramApi("deleteWebhook", { drop_pending_updates: false });
-    console.log("[Telegram Bot] Long polling started.");
-  } catch (error) {
-    const details = error instanceof Error ? error.message : "Unknown Telegram polling error.";
-    console.error("[Telegram Bot] Could not initialize long polling:", details);
-    return;
+  let initializationDelay = 1e3;
+  while (true) {
+    try {
+      await callTelegramApi("deleteWebhook", { drop_pending_updates: false });
+      break;
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Unknown Telegram polling error.";
+      telegramBotStatus = "reconnecting";
+      console.error("[Telegram Bot] Could not initialize long polling; retrying:", details);
+      await new Promise((resolve) => setTimeout(resolve, initializationDelay));
+      initializationDelay = Math.min(initializationDelay * 2, 3e4);
+    }
   }
+  const commandNames = ["start", "apps", "open", "search", "add", "remove", "language", "help", "cancel"];
+  const commandsFor = (language) => commandNames.map((command) => ({
+    command,
+    description: BOT_COPY[language].commands[command]
+  }));
+  try {
+    await callTelegramApi("setMyCommands", { commands: commandsFor("en") });
+    await callTelegramApi("setMyCommands", { commands: commandsFor("es"), language_code: "es" });
+    await callTelegramApi("setMyCommands", { commands: commandsFor("pt"), language_code: "pt" });
+  } catch (error) {
+    const details = error instanceof Error ? error.message : "Unknown Telegram command setup error.";
+    console.warn("[Telegram Bot] Could not register commands:", details);
+  }
+  console.log("[Telegram Bot] Long polling started.");
   let offset = 0;
   let retryDelay = 1e3;
   while (true) {
@@ -518,9 +958,11 @@ async function startTelegramPolling() {
           console.warn("[Telegram Bot] Failed to process an update:", details);
         }
       }
+      telegramBotStatus = "running";
       retryDelay = 1e3;
     } catch (error) {
       const details = error instanceof Error ? error.message : "Unknown Telegram polling error.";
+      telegramBotStatus = "reconnecting";
       console.error("[Telegram Bot] Polling failed; retrying:", details);
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
       retryDelay = Math.min(retryDelay * 2, 3e4);
