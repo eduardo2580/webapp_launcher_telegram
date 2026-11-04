@@ -2,10 +2,12 @@
   "name": "telegram-web-launcher",
   "private": true,
   "version": "1.0.0",
+  "license": "MIT",
+  "author": "Eduardo Souza Rodrigues",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node --max-old-space-size=32 --optimize-for-size -e \"process.env.NODE_ENV='production'; import('./server.js')\"",
+    "start": "node --max-old-space-size=64 server.js",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=server.js",
     "preview": "vite preview",
     "setup:telegram": "node scripts/configure-telegram-token.mjs",

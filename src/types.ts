@@ -29,3 +29,41 @@ export interface CloudStorageSyncState {
   cachedCount?: number;
 }
 
+export interface InlineKeyboardButtonItem {
+  text: string;
+  url?: string;
+  callback_data?: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  sender: 'user' | 'bot';
+  text: string;
+  time: string;
+  parseMode?: string;
+  replyMarkup?: {
+    inline_keyboard?: InlineKeyboardButtonItem[][];
+  };
+}
+
+export interface BotStatusResponse {
+  status: string;
+  botStatus: 'disabled' | 'starting' | 'running' | 'reconnecting';
+  configured: boolean;
+  username: string | null;
+  webhookUrl: string;
+  totalApps: number;
+  coreAppsCount: number;
+  customAppsCount: number;
+  apps: WebAppItem[];
+  discloud?: {
+    provider: string;
+    type: string;
+    id: string;
+    ramLimitMB: number;
+    heapUsedMB: number;
+    rssMB: number;
+    uptimeSeconds: number;
+  };
+}
+
