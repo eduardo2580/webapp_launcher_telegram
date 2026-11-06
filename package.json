@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "python3 bot.py",
     "start": "python3 bot.py",
-    "build": "python3 -m py_compile bot.py",
-    "lint": "python3 -m py_compile bot.py"
+    "build": "python3 -m py_compile bot.py pack_discloud.py deploy_discloud.py",
+    "lint": "python3 -m py_compile bot.py pack_discloud.py deploy_discloud.py",
+    "package": "python3 pack_discloud.py"
   }
 }

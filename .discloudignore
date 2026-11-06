@@ -6,3 +6,7 @@ node_modules/
 *.log
 .env
 bun.lock
+__pycache__/
+*.pyc
+*.tmp
+dist/

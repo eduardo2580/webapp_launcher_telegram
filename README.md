@@ -7,59 +7,64 @@
 
 ## 📋 Sumário
 1. [Visão Geral](#-visão-geral)
-2. [Principais Recursos](#-principais-recursos)
-3. [Arquitetura](#-arquitetura)
-4. [Instalação e Execução](#-instalação-e-execução)
-5. [Variáveis de Ambiente](#-variáveis-de-ambiente)
-6. [Deploy na Discloud](#-deploy-na-discloud)
-7. [Comandos do Bot no Telegram](#-comandos-do-bot-no-telegram)
-8. [Licença](#-licença)
+2. [Solução para o Erro NO_CLUSTER da Discloud](#-solução-para-o-erro-no_cluster-da-discloud)
+3. [Instalação e Execução Local](#-instalação-e-execução-local)
+4. [Deploy na Discloud](#-deploy-na-discloud)
+5. [Alternativas Gratuitas sem Fila](#-alternativas-gratuitas-sem-fila)
+6. [Comandos no Telegram](#-comandos-no-telegram)
+7. [Licença](#-licença)
 
 ---
 
 ## 🌟 Visão Geral
 
-Este bot roda como um processo daemon no terminal:
-* **Terminal Headless**: Recebe atualizações via long polling da Telegram Bot API.
-* **Google Gemini API**: Repassa as mensagens dos usuários para o modelo `gemini-3.8-flash` acompanhadas de instruções de sistema (*system instructions*) otimizadas para mensagens móveis.
-* **Respostas Diretas no Chat**: Responde no chat do Telegram com formatação compatível (Markdown, blocos de código, negrito, itálico).
-* **Indicador de Digitação**: Ativa o status `typing...` no Telegram enquanto a IA gera a resposta.
-* **Memória de Conversa**: Mantém o contexto de turnos recentes da conversa por chat.
+* **100% Headless**: Roda no terminal como um daemon leve (< 15 MB de RAM).
+* **Gemini API**: Respostas inteligentes via modelo `gemini-3.8-flash`.
+* **Modo Offline**: Responde comandos, cálculos e saudações mesmo antes de configurar a chave do Gemini.
+* **Compactação Ultra-Otimizada**: Arquivo `discloud.zip` de apenas ~9 KB, acelerando o provisionamento em servidores em nuvem.
 
 ---
 
-## 📦 Arquivos do Projeto
+## ⚡ Solução para o Erro `NO_CLUSTER` da Discloud
 
-* `bot.py`: Script principal do servidor backend em Python.
-* `requirements.txt`: Dependências Python (`google-genai`, `python-dotenv`, `requests`).
-* `discloud.config`: Configuração para hospedagem do bot na nuvem Discloud.
-* `.env.example`: Modelo de variáveis de ambiente.
-
----
-
-## 🚀 Instalação e Execução
-
-### 1. Clonar ou Acessar o Diretório
-```bash
-cd telegram-gemini-bot
+### O que significa `NO_CLUSTER`?
+```json
+{"status":"error","message":"No momento, estamos lidando com uma alta demanda de Bots em nosso plano gratuito...","code":"NO_CLUSTER"}
 ```
+Esse erro da Discloud ocorre **exclusivamente quando os nós (clusters) do plano gratuito estão temporariamente lotados** de bots de outros usuários. Não é um erro no seu código.
 
-### 2. Instalar Dependências
+### Como Evitar e Superar o `NO_CLUSTER`:
+
+1. **Upload Limpo via `discloud.zip` (9.4 KB)**:
+   Muitos usuários recebem erro porque enviam pastas inteiras ou arquivos desnecessários (`node_modules`, `.cache`), fazendo a alocação falhar.  
+   Execute:
+   ```bash
+   python3 pack_discloud.py
+   ```
+   Isso cria o arquivo `discloud.zip` limpo com apenas os arquivos necessários (`bot.py`, `discloud.config`, `requirements.txt`).
+
+2. **Auto-Retry com Fila (`deploy_discloud.py`)**:
+   Em vez de tentar manualmente no painel web enquanto os servidores estão lotados, use o script de auto-deploy que tenta a cada 25 segundos até uma vaga abrir no cluster gratuito:
+   ```bash
+   python3 deploy_discloud.py SEU_TOKEN_DA_DISCLOUD
+   ```
+   *(Seu token pode ser obtido em `discloud.com/dashboard/user`)*.
+
+3. **Horários de Baixa Demanda**:
+   Na Discloud gratuita, vagas abrem com frequência a cada poucos minutos quando bots de teste de outros usuários são desligados ou reiniciados.
+
+---
+
+## 🚀 Instalação e Execução Local
+
 ```bash
+# 1. Instalar dependências
 pip install -r requirements.txt
-```
 
-### 3. Configurar Credenciais
-Crie um arquivo `.env` baseado no `.env.example`:
-```env
-TELEGRAM_BOT_TOKEN=seu_token_do_botfather
-GEMINI_API_KEY=sua_chave_gemini_api
-GEMINI_MODEL=gemini-3.8-flash
-PORT=3000
-```
+# 2. Configurar variáveis no .env
+cp .env.example .env
 
-### 4. Executar no Terminal
-```bash
+# 3. Executar o bot
 python3 bot.py
 ```
 
@@ -67,35 +72,45 @@ python3 bot.py
 
 ## ☁️ Deploy na Discloud
 
-O arquivo `discloud.config` já está pronto:
-
+O arquivo `discloud.config` já está nos padrões oficiais:
 ```ini
-ID=telegram-gemini-bot
+NAME=TelegramGeminiBot
 TYPE=bot
 MAIN=bot.py
-NAME=Telegram Gemini Bot
 RAM=100
 AUTORESTART=true
 VERSION=latest
-BUILD=pip install -r requirements.txt
-START=python3 bot.py
 ```
 
-No painel da [Discloud](https://discloud.com/):
-1. Adicione a variável `TELEGRAM_BOT_TOKEN` com o token gerado pelo `@BotFather`.
-2. Adicione a variável `GEMINI_API_KEY` com sua chave do Google AI Studio.
-3. Inicie a aplicação no plano `RAM=100`.
+Envie o arquivo `discloud.zip` gerado pelo `python3 pack_discloud.py` no [Painel da Discloud](https://discloud.com/dashboard).
+
+---
+
+## 🌐 Alternativas Gratuitas Sem Limitação de Cluster
+
+Se a Discloud estiver permanentemente lotada no plano gratuito, você pode hospedar este bot gratuitamente em:
+
+1. **[Render.com](https://render.com/)**:
+   - Crie um *Background Worker* ou *Web Service* gratuito.
+   - Conecte o repositório Git.
+   - Start Command: `python3 bot.py`.
+   - Sem filas nem erro `NO_CLUSTER`.
+
+2. **[Koyeb.com](https://www.koyeb.com/)**:
+   - Oferece instâncias gratuitas *Eco* com deploy direto via GitHub ou Dockerfile.
+
+3. **[Railway.app](https://railway.app/)** ou **VPS Gratuita**:
+   - Execute com `python3 bot.py`.
 
 ---
 
 ## 💬 Comandos no Telegram
 
-* `/start` — Mensagem de boas-vindas e início da conversa
-* `/help` — Manual de instruções e recursos
-* `/clear` ou `/reset` — Limpa o histórico de memória da conversa atual
-* `/status` — Informações sobre o modelo, uptime e mensagens processadas
-* `/ping` — Teste de latência e conectividade
-* *Texto livre* — Envie qualquer pergunta ou comando e receba a resposta da IA
+* `/start` — Boas-vindas e introdução
+* `/help` — Lista de comandos e ajuda
+* `/clear` — Limpa o histórico da conversa
+* `/status` — Status do servidor, uptime e contagem de mensagens
+* `/ping` — Teste rápido de resposta
 
 ---
 
