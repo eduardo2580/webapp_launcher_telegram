@@ -1,6 +1,6 @@
 {
   "name": "Inicializador de aplicativos web do Telegram",
-  "description": "Inicializador leve de Mini Apps do Telegram e PWA, com sincronização pelo Telegram Cloud e visualizador integrado.",
+  "description": "Headless Telegram bot backend powered by Google Gemini API.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

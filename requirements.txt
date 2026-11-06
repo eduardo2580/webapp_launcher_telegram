@@ -1,0 +1,1 @@
+# No third-party runtime dependencies. Telegram and Gemini use Python's standard library.
