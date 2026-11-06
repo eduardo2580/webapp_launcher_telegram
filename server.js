@@ -2,16 +2,27 @@
 import express from "express";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 dotenv.config();
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 var app = express();
-var PORT = Number(process.env.PORT) || 8080;
+var PORT = Number(process.env.PORT) || 3e3;
 var isProd = process.env.NODE_ENV === "production";
 var BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+var telegramPublicBaseUrl = process.env.APP_URL?.trim() || (process.env.RAILWAY_PUBLIC_DOMAIN?.trim() ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.trim().replace(/^https?:\/\//i, "")}` : void 0);
+var telegramPublicUrl = telegramPublicBaseUrl ? new URL(telegramPublicBaseUrl) : void 0;
+if (telegramPublicUrl && telegramPublicUrl.protocol !== "https:") {
+  throw new Error("APP_URL must use HTTPS to enable Telegram webhook mode.");
+}
+var TELEGRAM_WEB_APP_URL = telegramPublicUrl ? new URL("/", telegramPublicUrl).toString() : void 0;
+var TELEGRAM_WEBHOOK_URL = telegramPublicUrl ? new URL("/api/telegram/webhook", telegramPublicUrl).toString() : void 0;
+var TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || randomBytes(32).toString("hex");
+if (!/^[A-Za-z0-9_-]{1,256}$/.test(TELEGRAM_WEBHOOK_SECRET)) {
+  throw new Error("TELEGRAM_WEBHOOK_SECRET must contain 1-256 letters, numbers, underscores, or hyphens.");
+}
 if (!BOT_TOKEN) {
   console.warn("[Telegram Bot] TELEGRAM_BOT_TOKEN is not configured; bot commands are disabled.");
 }
@@ -29,7 +40,8 @@ app.get("/api/health", (_req, res) => {
     env: isProd ? "production" : "development",
     telegramBot: {
       status: telegramBotStatus,
-      configured: Boolean(BOT_TOKEN)
+      configured: Boolean(BOT_TOKEN),
+      delivery: !BOT_TOKEN ? "disabled" : TELEGRAM_WEBHOOK_URL ? "webhook" : "polling"
     }
   });
 });
@@ -103,7 +115,6 @@ var CORE_APPS = [
 ];
 var APP_CATEGORIES = ["Social", "Work", "Tools", "Media", "Other"];
 var BOT_PAGE_SIZE = 8;
-var serverSyncedApps = [...CORE_APPS];
 var telegramAddedApps = [];
 var pendingAppAdds = /* @__PURE__ */ new Map();
 var BOT_DATA_DIR = path.resolve(process.env.BOT_DATA_DIR || path.join(__dirname, "data"));
@@ -526,19 +537,13 @@ app.get("/api/apps", (_req, res) => {
     version: "1.2.0",
     syncedAt: Date.now(),
     source: "server",
-    apps: serverSyncedApps
+    apps: CORE_APPS
   });
 });
-app.post("/api/apps/sync", (req, res) => {
-  const { apps, clientTimestamp } = req.body || {};
-  if (Array.isArray(apps) && apps.length > 0) {
-    serverSyncedApps = apps;
-  }
-  res.status(200).json({
-    status: "ok",
-    syncedAt: Date.now(),
-    clientTimestamp: clientTimestamp || null,
-    count: normalizeBotApps(serverSyncedApps).length
+app.post("/api/apps/sync", (_req, res) => {
+  res.status(410).json({
+    status: "error",
+    message: "Server-side app sync is disabled. App data stays in browser or Telegram Cloud Storage."
   });
 });
 async function handleTelegramUpdate(update) {
@@ -902,15 +907,81 @@ async function handleTelegramUpdate(update) {
     reply_markup: menu.reply_markup
   });
 }
-app.post("/api/telegram/webhook", async (req, res) => {
-  res.status(200).send("OK");
-  if (!BOT_TOKEN) return;
+app.post("/api/telegram/webhook", (req, res) => {
+  if (!BOT_TOKEN || !TELEGRAM_WEBHOOK_URL) {
+    res.sendStatus(404);
+    return;
+  }
+  const receivedSecret = req.get("X-Telegram-Bot-Api-Secret-Token");
+  const receivedSecretBuffer = Buffer.from(receivedSecret || "");
+  const expectedSecretBuffer = Buffer.from(TELEGRAM_WEBHOOK_SECRET);
+  if (receivedSecretBuffer.length !== expectedSecretBuffer.length || !timingSafeEqual(receivedSecretBuffer, expectedSecretBuffer)) {
+    res.sendStatus(401);
+    return;
+  }
   const update = req.body;
+  if (!update || typeof update !== "object" || !Number.isInteger(update.update_id)) {
+    res.sendStatus(400);
+    return;
+  }
+  res.status(200).send("OK");
   void handleTelegramUpdate(update).catch((error) => {
     const details = error instanceof Error ? error.message : "Unknown Telegram webhook error.";
     console.warn("[Telegram webhook] Failed to update the app menu:", details);
   });
 });
+async function registerTelegramCommands() {
+  const commandNames = ["start", "apps", "open", "search", "add", "remove", "language", "help", "cancel"];
+  const commandsFor = (language) => commandNames.map((command) => ({
+    command,
+    description: BOT_COPY[language].commands[command]
+  }));
+  try {
+    await callTelegramApi("setMyCommands", { commands: commandsFor("en") });
+    await callTelegramApi("setMyCommands", { commands: commandsFor("es"), language_code: "es" });
+    await callTelegramApi("setMyCommands", { commands: commandsFor("pt"), language_code: "pt" });
+  } catch (error) {
+    const details = error instanceof Error ? error.message : "Unknown Telegram command setup error.";
+    console.warn("[Telegram Bot] Could not register commands:", details);
+  }
+  if (TELEGRAM_WEB_APP_URL) {
+    try {
+      await callTelegramApi("setChatMenuButton", {
+        menu_button: {
+          type: "web_app",
+          text: "Open launcher",
+          web_app: { url: TELEGRAM_WEB_APP_URL }
+        }
+      });
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Unknown Telegram menu setup error.";
+      console.warn("[Telegram Bot] Could not set the launcher menu button:", details);
+    }
+  }
+}
+async function startTelegramWebhook() {
+  if (!BOT_TOKEN || !TELEGRAM_WEBHOOK_URL) return;
+  let retryDelay = 1e3;
+  while (true) {
+    try {
+      await callTelegramApi("setWebhook", {
+        url: TELEGRAM_WEBHOOK_URL,
+        secret_token: TELEGRAM_WEBHOOK_SECRET,
+        allowed_updates: ["message", "callback_query"]
+      });
+      await registerTelegramCommands();
+      telegramBotStatus = "running";
+      console.log("[Telegram Bot] Webhook delivery started.");
+      return;
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Unknown Telegram webhook setup error.";
+      telegramBotStatus = "reconnecting";
+      console.error("[Telegram Bot] Could not configure webhook; retrying:", details);
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      retryDelay = Math.min(retryDelay * 2, 3e4);
+    }
+  }
+}
 async function startTelegramPolling() {
   if (!BOT_TOKEN) return;
   let initializationDelay = 1e3;
@@ -926,19 +997,7 @@ async function startTelegramPolling() {
       initializationDelay = Math.min(initializationDelay * 2, 3e4);
     }
   }
-  const commandNames = ["start", "apps", "open", "search", "add", "remove", "language", "help", "cancel"];
-  const commandsFor = (language) => commandNames.map((command) => ({
-    command,
-    description: BOT_COPY[language].commands[command]
-  }));
-  try {
-    await callTelegramApi("setMyCommands", { commands: commandsFor("en") });
-    await callTelegramApi("setMyCommands", { commands: commandsFor("es"), language_code: "es" });
-    await callTelegramApi("setMyCommands", { commands: commandsFor("pt"), language_code: "pt" });
-  } catch (error) {
-    const details = error instanceof Error ? error.message : "Unknown Telegram command setup error.";
-    console.warn("[Telegram Bot] Could not register commands:", details);
-  }
+  await registerTelegramCommands();
   console.log("[Telegram Bot] Long polling started.");
   let offset = 0;
   let retryDelay = 1e3;
@@ -1000,7 +1059,8 @@ async function startServer() {
   }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[Server] Web App Launcher running on http://0.0.0.0:${PORT}`);
-    if (BOT_TOKEN) void startTelegramPolling();
+    if (TELEGRAM_WEBHOOK_URL) void startTelegramWebhook();
+    else if (BOT_TOKEN) void startTelegramPolling();
   });
 }
 startServer();

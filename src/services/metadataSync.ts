@@ -7,7 +7,7 @@ import {
 } from './telegram';
 
 const STORAGE_KEY_APPS = 'tma_cloud_apps';
-const METADATA_CACHE_NAME = 'tma-metadata-v2';
+const METADATA_CACHE_NAME = 'tma-metadata-v3';
 const METADATA_API_URL = '/api/apps';
 const SYNC_TAG_METADATA = 'sync-app-metadata';
 
@@ -149,20 +149,16 @@ export async function triggerBackgroundSync(appsToSync?: WebAppItem[]): Promise<
 
   // Resilient fallback for iOS / non-sync browsers
   if (navigator.onLine) {
+    if (appsToSync && appsToSync.length > 0) {
+      return true;
+    }
+
     try {
-      if (appsToSync && appsToSync.length > 0) {
-        await fetch('/api/apps/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apps: appsToSync, clientTimestamp: Date.now() }),
-        });
-      } else {
-        const res = await fetch(METADATA_API_URL, { cache: 'no-cache' });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.apps) && activeCallbacks.onMetadataUpdated) {
-            activeCallbacks.onMetadataUpdated(data.apps, 'network-fetch');
-          }
+      const res = await fetch(METADATA_API_URL, { cache: 'no-cache' });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.apps) && activeCallbacks.onMetadataUpdated) {
+          activeCallbacks.onMetadataUpdated(data.apps, 'network-fetch');
         }
       }
       return true;

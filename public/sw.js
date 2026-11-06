@@ -5,7 +5,7 @@
  */
 
 const STATIC_CACHE_NAME = 'tma-launcher-static-v3';
-const METADATA_CACHE_NAME = 'tma-metadata-v2';
+const METADATA_CACHE_NAME = 'tma-metadata-v3';
 const SYNC_TAG_METADATA = 'sync-app-metadata';
 
 const STATIC_ASSETS = [
@@ -140,16 +140,15 @@ self.addEventListener('sync', (event) => {
  */
 async function executeBackgroundMetadataSync() {
   try {
+    const metadataCache = await caches.open(METADATA_CACHE_NAME);
+    if (await metadataCache.match('/api/apps')) return true;
+
     const res = await fetch('/api/apps', { cache: 'no-cache' });
     if (res.ok) {
-      const data = await res.clone().json();
-      const metadataCache = await caches.open(METADATA_CACHE_NAME);
       await metadataCache.put('/api/apps', res);
 
-      // Broadcast update to open launcher views
       await broadcastToClients({
         type: 'BACKGROUND_SYNC_COMPLETE',
-        apps: data.apps,
         timestamp: Date.now(),
         source: 'background-sync',
       });
@@ -176,14 +175,13 @@ self.addEventListener('fetch', (event) => {
         const fetchPromise = fetch(event.request)
           .then(async (networkRes) => {
             if (networkRes.ok) {
-              const clone = networkRes.clone();
-              await metadataCache.put('/api/apps', clone);
-              // Inform clients of fresh data
-              const freshData = await networkRes.clone().json();
-              broadcastToClients({
+              if (!cachedResponse) {
+                await metadataCache.put('/api/apps', networkRes.clone());
+              }
+              await broadcastToClients({
                 type: 'METADATA_UPDATED',
-                apps: freshData.apps,
                 timestamp: Date.now(),
+                source: 'core-metadata-refresh',
               });
             }
             return networkRes;
