@@ -9,3 +9,4 @@ coverage/
 .env*
 !.env.example
 /data/telegram-apps.json
+/bot_data.json

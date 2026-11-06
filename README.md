@@ -1,7 +1,6 @@
-# 🤖 Headless Telegram Bot Backend (Google Gemini AI)
+# 🚀 Headless Telegram App Launcher + Gemini Bot
 
-> **Backend server-side puro em Python**, operando 100% no terminal via **Telegram Bot API** e **Google Gemini API** (`gemini-3.8-flash`).
-> Sem qualquer interface web, frontend, HTML, CSS ou JavaScript.
+> Backend puro em Python, executado no terminal. O launcher, busca, idiomas e configurações aparecem como botões dentro do Telegram; não há frontend web.
 
 ---
 
@@ -12,19 +11,22 @@
 4. [Deploy na Discloud](#-deploy-na-discloud)
 5. [Deploy Econômico na Railway](#-deploy-econômico-na-railway)
 6. [Alternativas Gratuitas sem Fila](#-alternativas-gratuitas-sem-fila)
-7. [Comandos no Telegram](#-comandos-no-telegram)
-8. [Licença](#-licença)
+7. [Launcher e Gemini](#-launcher-e-gemini)
+8. [Comandos no Telegram](#-comandos-no-telegram)
+9. [Licença](#-licença)
 
 ---
 
 ## 🌟 Visão Geral
 
 * **100% Headless**: Roda no terminal sem frontend e usa apenas a biblioteca padrão do Python.
-* **Gemini API**: Respostas inteligentes via modelo `gemini-3.8-flash`.
+* **Launcher no Telegram**: Categorias, links de apps, busca, inclusão/remoção de apps, ajuda e escolha de idioma.
+* **Chave Gemini por usuário**: Cada pessoa pode configurar sua própria chave no chat privado; as chaves ficam apenas na memória e não são gravadas em disco.
+* **Gemini API**: Respostas via modelo `gemini-3.8-flash`, com limite de saída para reduzir consumo.
 * **Baixo consumo**: Chama a API REST do Gemini diretamente, sem carregar um SDK pesado.
 * **Webhook na Railway**: Usa HTTPS e valida o segredo do Telegram para evitar long polling ocioso.
-* **Modo Offline**: Responde comandos, cálculos e saudações mesmo antes de configurar a chave do Gemini.
-* **Compactação Ultra-Otimizada**: Arquivo `discloud.zip` de apenas ~9 KB, acelerando o provisionamento em servidores em nuvem.
+* **Sem chave compartilhada por padrão**: O servidor não usa a chave global para os usuários, a menos que `ALLOW_SHARED_GEMINI_KEY=true`.
+* **Pacote de implantação enxuto**: O `discloud.zip` contém somente os arquivos necessários para o bot.
 
 ---
 
@@ -38,7 +40,7 @@ Esse erro da Discloud ocorre **exclusivamente quando os nós (clusters) do plano
 
 ### Como Evitar e Superar o `NO_CLUSTER`:
 
-1. **Upload Limpo via `discloud.zip` (9.4 KB)**:
+1. **Upload Limpo via `discloud.zip`**:
    Muitos usuários recebem erro porque enviam pastas inteiras ou arquivos desnecessários (`node_modules`, `.cache`), fazendo a alocação falhar.
    Execute:
    ```bash
@@ -65,10 +67,12 @@ Esse erro da Discloud ocorre **exclusivamente quando os nós (clusters) do plano
 cp .env.example .env
 
 # 2. Executar o bot (não há dependências externas)
-python3 bot.py
+python bot.py
 ```
 
+No PowerShell, use `Copy-Item .env.example .env` no primeiro passo.
 Sem `APP_URL` ou `RAILWAY_PUBLIC_DOMAIN`, o bot usa long polling localmente.
+No Telegram, envie `/start`, escolha **🧠 Chave Gemini** e informe sua chave em uma conversa privada. Também é possível usar `/setkey`. Ela é removida da mensagem do Telegram quando permitido e mantida somente na memória; após reiniciar o bot, será necessário configurá-la novamente. Não envie chaves em grupos.
 
 ---
 
@@ -95,9 +99,11 @@ O repositório inclui um `Dockerfile` Python mínimo para evitar instalar o anti
 | Variável | Valor |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Token criado no `@BotFather` |
-| `GEMINI_API_KEY` | Chave do Google AI Studio |
+| `GEMINI_API_KEY` | Opcional; chave global do Google AI Studio |
+| `ALLOW_SHARED_GEMINI_KEY` | `true` para permitir explicitamente o uso da chave global; padrão `false` |
 | `GEMINI_MODEL` | Opcional; `gemini-3.8-flash` por padrão |
 | `TELEGRAM_WEBHOOK_SECRET` | Opcional; use um segredo estável ou deixe vazio para gerar um |
+| `DATA_FILE` | Opcional; arquivo JSON para preferências e apps personalizados, padrão `bot_data.json` |
 
 A Railway fornece `PORT` e `RAILWAY_PUBLIC_DOMAIN`. O domínio público configura o webhook automaticamente. Use `APP_URL` somente se o domínio HTTPS for personalizado. O endpoint `/health` serve para diagnóstico.
 
@@ -107,6 +113,8 @@ Para minimizar o custo:
 * O modo webhook substitui o polling contínuo; o processo ainda permanece ativo, então o consumo de memória é cobrado mesmo quando não há mensagens.
 * O plano Free informa US$ 1/mês em créditos de uso ([preços atuais](https://railway.com/pricing)). A cobrança depende do consumo por segundo de CPU e memória, além do tráfego; esse crédito não garante que o serviço ficará sem custo adicional. Confira o uso e configure alertas/limites no painel antes de deixá-lo ativo.
 * O histórico das conversas fica apenas na memória e é perdido quando o serviço reinicia. Não adicione volume se essa persistência não for necessária.
+* As chaves Gemini inseridas pelos usuários nunca são persistidas. Cada usuário precisa configurá-las novamente após uma reinicialização.
+* Apps personalizados e idiomas ficam em `DATA_FILE`; sem volume persistente, esses dados podem desaparecer quando a Railway recriar o serviço.
 
 Como referência, o processo local sem dependências extras usou cerca de 22 MiB de RSS; ao valor publicado de US$ 10/GiB-mês, isso equivale a aproximadamente US$ 0,22/mês de memória se o uso na Railway for semelhante. É apenas uma estimativa: não inclui CPU/tráfego e o consumo real deve ser confirmado no painel. Webhook reduz o trabalho ocioso de CPU, mas não elimina a cobrança de memória do processo sempre ativo.
 
@@ -130,13 +138,25 @@ Se a Discloud estiver permanentemente lotada no plano gratuito, você pode hospe
 
 ---
 
+## 🧩 Launcher e Gemini
+
+O comando `/start` abre o launcher com filtros **Todos**, **Social**, **Ferramentas** e **Mídia**. Os botões de app abrem o endereço HTTPS diretamente. **Adicionar app** solicita `Nome | https://endereco.com | Social`, aceitando também `Tools` ou `Media`; apps personalizados podem ser buscados e removidos. Apps personalizados são separados por chat.
+
+Cada usuário configura sua própria chave Gemini pelo botão **🧠 Chave Gemini** ou `/setkey`. As chamadas usam essa chave, que não é escrita em logs ou no arquivo de dados. O servidor só usa a chave global `GEMINI_API_KEY` se `ALLOW_SHARED_GEMINI_KEY=true` estiver definido conscientemente.
+
 ## 💬 Comandos no Telegram
 
 * `/start` — Boas-vindas e introdução
 * `/help` — Lista de comandos e ajuda
-* `/clear` — Limpa o histórico da conversa
-* `/status` — Status do servidor, uptime e contagem de mensagens
-* `/ping` — Teste rápido de resposta
+* `/search` — Buscar apps
+* `/addapp` — Adicionar app personalizado
+* `/removeapp` — Remover app personalizado
+* `/language` — Alterar idioma
+* `/setkey` — Configurar chave Gemini deste chat privado
+* `/forgetkey` — Remover chave Gemini deste processo
+* `/clear` — Limpar o histórico da conversa
+* `/status` — Status do servidor e configuração
+* `/ping` — Testar resposta rápida
 
 ---
 
